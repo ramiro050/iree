@@ -204,6 +204,137 @@ static void iree_hal_vulkan_vma_allocator_query_statistics(
   });
 }
 
+// DO NOT SUBMIT
+// not LAZILY_ALLOCATED ever
+
+// Returns true if the memory type at |type_idx| is in a device-local heap.
+static bool iree_hal_vulkan_is_heap_device_local(
+    const VkPhysicalDeviceMemoryProperties* memory_props, int type_idx) {
+  const uint32_t heap_idx = memory_props->memoryTypes[type_idx].heapIndex;
+  return iree_all_bits_set(memory_props->memoryHeaps[heap_idx].flags,
+                           VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+}
+
+// Finds a memory type that is host-coherent (no flush/invalidate).
+// This memory _may_ be device visible.
+//
+// Commonly:
+//   [DEVICE_LOCAL_BIT]
+//   HOST_VISIBLE_BIT
+//   HOST_COHERENT_BIT
+//   [HOST_CACHED_BIT]
+static int iree_hal_vulkan_find_host_coherent_memory_type(
+    const VkPhysicalDeviceMemoryProperties* memory_props) {
+  //
+  return -1;
+}
+
+// Finds a memory type that is host-cached (flush/invalidate required).
+// This memory _may_ be device visible.
+//
+// Commonly:
+//   [DEVICE_LOCAL_BIT]
+//   HOST_VISIBLE_BIT
+//   HOST_CACHED_BIT
+//   [HOST_COHERENT_BIT]
+static int iree_hal_vulkan_find_host_cached_memory_type(
+    const VkPhysicalDeviceMemoryProperties* memory_props) {
+  //
+  return -1;
+}
+
+// Finds a memory type that is device-local.
+// This memory _may_ be host visible, though we try to select the most exclusive
+// device local memory when available.
+//
+// Commonly:
+//   DEVICE_LOCAL_BIT
+static int iree_hal_vulkan_find_device_local_memory_type(
+    const VkPhysicalDeviceMemoryProperties* memory_props) {
+  // iree_hal_vulkan_is_heap_device_local
+
+  //
+  return -1;
+}
+
+// Finds a memory type that is device-local and host-visible, if any.
+// This memory type does not exist in all systems and may have a limited size.
+// The memory may be write-combined or cached.
+//
+// Commonly:
+//   DEVICE_LOCAL_BIT
+//   HOST_VISIBLE_BIT
+//   [HOST_COHERENT_BIT]
+//   [HOST_CACHED_BIT]
+static int iree_hal_vulkan_find_host_visible_device_memory_type(
+    const VkPhysicalDeviceMemoryProperties* memory_props) {
+  //
+  // iree_hal_vulkan_is_heap_device_local
+  return -1;
+}
+
+static iree_status_t iree_hal_vulkan_vma_allocator_query_memory_heaps(
+    iree_hal_allocator_t* IREE_RESTRICT base_allocator,
+    iree_host_size_t capacity,
+    iree_hal_allocator_memory_heap_t* IREE_RESTRICT heaps,
+    iree_host_size_t* IREE_RESTRICT out_count) {
+  iree_hal_vulkan_vma_allocator_t* allocator =
+      iree_hal_vulkan_vma_allocator_cast(base_allocator);
+  const VkPhysicalDeviceProperties* device_props = NULL;
+  vmaGetPhysicalDeviceProperties(allocator->vma, &device_props);
+  const VkPhysicalDeviceMemoryProperties* memory_props = NULL;
+  vmaGetMemoryProperties(allocator->vma, &memory_props);
+
+  const iree_device_size_t max_allocation_size =
+      device_props->limits.maxStorageBufferRange;
+  const iree_device_size_t min_alignment =
+      device_props->limits.minStorageBufferOffsetAlignment;
+
+  // Integerated devices have unified memory and generally only one or two
+  // types (cached/uncached).
+  const bool is_integrated =
+      device_props->deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ||
+      device_props->deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+
+  // Find the memory types bucketed into the categories we use.
+  // Indices are -1 if not found.
+  const int host_coherent_idx =
+      iree_hal_vulkan_find_host_coherent_memory_type(memory_props);
+  const int host_cached_idx =
+      iree_hal_vulkan_find_host_cached_memory_type(memory_props);
+  const int device_local_idx =
+      iree_hal_vulkan_find_device_local_memory_type(memory_props);
+  const int host_visible_device_idx =
+      iree_hal_vulkan_find_host_visible_device_memory_type(memory_props);
+
+  iree_host_size_t count = 0;
+  if (is_integrated) {
+    // With unified memory we only care about 2 types: uncached and cached.
+    // Some devices don't even consider those different.
+    const bool has_exclusive_device_local =
+        device_local_idx != host_coherent_idx &&
+        device_local_idx != host_cached_idx;
+    const bool has_host_uncached =
+        host_coherent_idx != -1 && host_cached_idx != host_coherent_idx;
+    count = 2;  // DO NOT SUBMIT
+    if (capacity >= count) {
+      // DO NOT SUBMIT
+    }
+  } else {
+    // With discrete device memory we need to model the host/device separately.
+    count = 3;  // DO NOT SUBMIT
+    if (capacity >= count) {
+      //
+      // DO NOT SUBMIT
+    }
+  }
+  if (out_count) *out_count = count;
+  if (capacity < count) {
+    return iree_status_from_code(IREE_STATUS_OUT_OF_RANGE);
+  }
+  return iree_ok_status();
+}
+
 static iree_hal_buffer_compatibility_t
 iree_hal_vulkan_vma_allocator_query_compatibility(
     iree_hal_allocator_t* IREE_RESTRICT base_allocator,
@@ -396,6 +527,7 @@ const iree_hal_allocator_vtable_t iree_hal_vulkan_vma_allocator_vtable = {
     /*.host_allocator=*/iree_hal_vulkan_vma_allocator_host_allocator,
     /*.trim=*/iree_hal_vulkan_vma_allocator_trim,
     /*.query_statistics=*/iree_hal_vulkan_vma_allocator_query_statistics,
+    /*.query_memory_heaps=*/iree_hal_vulkan_vma_allocator_query_memory_heaps,
     /*.query_compatibility=*/
     iree_hal_vulkan_vma_allocator_query_compatibility,
     /*.allocate_buffer=*/iree_hal_vulkan_vma_allocator_allocate_buffer,
