@@ -23,6 +23,7 @@
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Support/MathExtras.h"
+#include "mlir/Transforms/SideEffectUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -56,8 +57,9 @@ static void populateTilingReductionPatterns(RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
 
   linalg::LinalgTransformationFilter filter(
-      ArrayRef<StringAttr>{},
+      ArrayRef<StringAttr>{StringAttr::get(context, getWorkgroupMemoryMarker())},
       StringAttr::get(context, getWorkgroupKTiledMarker()));
+  filter.setMatchByDefault();
   linalg::TilingPatterns<linalg::MatmulOp, linalg::BatchMatmulOp,
                          linalg::GenericOp>::insert(patterns, tilingOptions,
                                                     filter);
@@ -203,6 +205,29 @@ static void populatePromotionPatterns(MLIRContext *context,
           }));
 }
 
+static void populatePromotionPatterns2(MLIRContext *context,
+                                      RewritePatternSet &patterns) {
+  patterns.insert<linalg::LinalgPromotionPattern<linalg::MatmulOp>,
+                  linalg::LinalgPromotionPattern<linalg::BatchMatmulOp>,
+                  linalg::LinalgPromotionPattern<linalg::GenericOp>>(
+      context,
+      linalg::LinalgPromotionOptions()
+          .setAllocationDeallocationFns(allocateWorkgroupMemory,
+                                        deallocateWorkgroupMemory)
+          .setCopyInOutFns(copyToWorkgroupMemory, copyToWorkgroupMemory)
+          .setOperandsToPromote({2})
+          .setUseFullTileBuffers({false, false}),
+      linalg::LinalgTransformationFilter(
+          ArrayRef<StringAttr>{},
+          StringAttr::get(context, getWorkgroupMemoryMarker()))
+          .addFilter([](Operation *op) {
+            auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
+            if (!linalgOp) return failure();
+            return success(linalg::isaContractionOpInterface(op) &&
+                           linalgOp.getNumParallelLoops() >= 2);
+          }));
+}
+
 namespace {
 struct LLVMGPUTileAndDistributePass
     : public LLVMGPUTileAndDistributeBase<LLVMGPUTileAndDistributePass> {
@@ -220,6 +245,38 @@ struct LLVMGPUTileAndDistributePass
     MLIRContext *context = &getContext();
     auto funcOp = getOperation();
     if (!isEntryPoint(funcOp)) return;
+
+    // Promote C matrix and propagate the fill into the temp allocation.
+    // This needs to be done before reduction tiling.
+    {
+      RewritePatternSet promotionPatterns(&getContext());
+      populatePromotionPatterns2(context, promotionPatterns);
+      if (failed(applyPatternsAndFoldGreedily(funcOp,
+                                              std::move(promotionPatterns)))) {
+        return signalPassFailure();
+      }
+      SmallVector<Operation *> toDelete;
+      funcOp.walk([&toDelete](memref::CopyOp copyOp) {
+        if (hasMarker(copyOp, getCopyToWorkgroupMemoryMarker())) {
+          Operation *prevOp = copyOp->getPrevNode();
+          while (prevOp) {
+            if (isSideEffectFree(prevOp)) {
+              prevOp = prevOp->getPrevNode();
+              continue;
+            }
+
+            auto fillOp = dyn_cast<linalg::FillOp>(prevOp);
+            if (!fillOp) break;
+            if (fillOp.output() != copyOp.source()) break;
+            fillOp->moveBefore(copyOp);
+            fillOp.outputsMutable().assign(copyOp.getTarget());
+            toDelete.push_back(copyOp.getOperation());
+            break;
+          }
+        }
+      });
+      for (Operation *op : toDelete) op->erase();
+    }
     {
       // Tile again at the workgroup level since redution dimension were
       // ignored. Dimensions already tiled will be ignore since we tile to the

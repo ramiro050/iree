@@ -27,7 +27,14 @@ struct LLVMGPUMultiBufferingPass
     auto funcOp = getOperation();
     SmallVector<memref::AllocOp> allocs;
     // Collect all the alloc operations.
-    funcOp.walk([&](memref::AllocOp allocOp) { allocs.push_back(allocOp); });
+    funcOp.walk([&](memref::AllocOp allocOp) {
+      // Skip allocations not used in a loop.
+      auto loop =
+          dyn_cast<scf::ForOp>(allocOp->getUsers().begin()->getParentOp());
+      if (!loop) return WalkResult::advance();
+      allocs.push_back(allocOp);
+      return WalkResult::advance();
+    });
     // Apply multi-buffering to all of them.
     for (memref::AllocOp alloc : allocs) {
       if (failed(memref::multiBuffer(alloc, numBuffers)))

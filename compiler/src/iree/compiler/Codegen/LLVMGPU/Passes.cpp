@@ -115,6 +115,7 @@ void addGPUMatmulTensorCorePassPipeline(OpPassManager &pm) {
   // Distribute linalg onto warps within the workgroup.
   pm.addNestedPass<func::FuncOp>(
       createLLVMGPUTileAndDistribute(/*distributeToWarp=*/true));
+  pm.addNestedPass<func::FuncOp>(createRemoveSingleIterationLoopPass());
   if (pipelineDepth > 1)
     pm.addNestedPass<func::FuncOp>(createLLVMGPUMultiBuffering(pipelineDepth));
   pm.addNestedPass<func::FuncOp>(createMemrefCopyToLinalgPass());
