@@ -28,6 +28,7 @@ source "${SCRIPT_DIR}/setup_build.sh"
 # IREE_BUILD_SAMPLES=OFF because samples assume embedded linker.
 "${CMAKE_BIN}" -B "${BUILD_DIR}" -G Ninja . \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DIREE_ENABLE_LLD=ON \
   -DIREE_BUILD_COMPILER=OFF \
   -DIREE_BUILD_TESTS=ON \
   -DIREE_BUILD_SAMPLES=OFF \
