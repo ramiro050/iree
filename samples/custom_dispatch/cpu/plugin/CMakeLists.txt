@@ -10,16 +10,6 @@ if(NOT IREE_TARGET_BACKEND_LLVM_CPU OR
   return()
 endif()
 
-set(XNNPACK_DIR "" CACHE STRING "XNNPACK directory")
-
-add_library(xnnpack STATIC IMPORTED)
-set_target_properties(xnnpack PROPERTIES IMPORTED_LOCATION ${XNNPACK_DIR}/build/local/libXNNPACK.a)
-set_target_properties(xnnpack PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${XNNPACK_DIR}/include)
-
-add_library(pthreadpool STATIC IMPORTED)
-set_target_properties(pthreadpool PROPERTIES IMPORTED_LOCATION ${XNNPACK_DIR}/build/local/pthreadpool/libpthreadpool.a)
-set_target_properties(pthreadpool PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${XNNPACK_DIR}/build/local/pthreadpool-source/include)
-
 # system-library plugin mechanism using the system dynamic library loader.
 if(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
 
@@ -30,8 +20,6 @@ target_include_directories(iree_samples_custom_dispatch_cpu_system_plugin
   PRIVATE
     ${IREE_SOURCE_DIR}/runtime/src/
 )
-
-target_link_libraries(iree_samples_custom_dispatch_cpu_system_plugin xnnpack pthreadpool cpuinfo)
 
 # NOTE: this is only required because we want this sample to run on all
 # platforms without needing to change the library name (libfoo.so/foo.dll).
