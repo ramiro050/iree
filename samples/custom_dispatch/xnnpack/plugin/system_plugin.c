@@ -69,16 +69,45 @@ static int simple_mul_workgroup(void* params_ptr, void* context,
   typedef struct {
     const float* restrict binding0;
     size_t binding0_offset;
+    size_t binding0_size0;
+    size_t binding0_size1;
+    size_t binding0_stride0;
+    size_t binding0_stride1;
     const float* restrict binding1;
     size_t binding1_offset;
+    size_t binding1_size0;
+    size_t binding1_size1;
+    size_t binding1_stride0;
+    size_t binding1_stride1;
     float* restrict binding2;
     size_t binding2_offset;
-    size_t size;
+    size_t binding2_size0;
+    size_t binding2_size1;
+    size_t binding2_stride0;
+    size_t binding2_stride1;
+    size_t size0;
+    size_t size1;
     size_t tid;
     uint32_t processor_id;
     const uint64_t* restrict processor_data;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
+
+  fprintf(
+      plugin->file,
+      "size0_0=%zu, size0_1=%zu\n"
+      "stride0_0=%zu, stride0_1=%zu\n"
+      "size1_0=%zu, size1_1=%zu\n"
+      "stride1_0=%zu, stride1_1=%zu\n"
+      "size2_0=%zu, size2_1=%zu\n"
+      "stride2_0=%zu, stride2_1=%zu\n"
+      "dim0=%zu\n"
+      "dim1=%zu\n",
+      params->binding0_size0, params->binding0_size1, params->binding0_stride0,
+      params->binding0_stride1, params->binding1_size0, params->binding1_size1,
+      params->binding1_stride0, params->binding1_stride1,
+      params->binding2_size0, params->binding2_size1, params->binding2_stride0,
+      params->binding2_stride1, params->size0, params->size1);
 
   enum xnn_status status;
   const struct xnn_allocator* allocator = NULL;
@@ -90,10 +119,10 @@ static int simple_mul_workgroup(void* params_ptr, void* context,
       xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph);
   assert(status == xnn_status_success && "unable to create subgraph");
 
-  const size_t dims[1] = {params->size};
+  const size_t dims[2] = {params->size0, params->size1};
   uint32_t lhs_id = XNN_INVALID_VALUE_ID;
   status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
-                                   /*num_dims=*/1, /*dims=*/dims,
+                                   /*num_dims=*/2, /*dims=*/dims,
                                    /*data=*/NULL,
                                    /*external_id=*/0,
                                    /*flags=*/XNN_VALUE_FLAG_EXTERNAL_INPUT,
@@ -102,7 +131,7 @@ static int simple_mul_workgroup(void* params_ptr, void* context,
 
   uint32_t rhs_id = XNN_INVALID_VALUE_ID;
   status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
-                                   /*num_dims=*/1, /*dims=*/dims,
+                                   /*num_dims=*/2, /*dims=*/dims,
                                    /*data=*/NULL,
                                    /*external_id=*/1,
                                    /*flags=*/XNN_VALUE_FLAG_EXTERNAL_INPUT,
@@ -111,7 +140,7 @@ static int simple_mul_workgroup(void* params_ptr, void* context,
 
   uint32_t output_id = XNN_INVALID_VALUE_ID;
   status = xnn_define_tensor_value(subgraph, xnn_datatype_fp32,
-                                   /*num_dims=*/1, dims, NULL,
+                                   /*num_dims=*/2, dims, NULL,
                                    /*external_id=*/2,
                                    XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &output_id);
   assert(status == xnn_status_success && "unable to define output tensor");
@@ -149,12 +178,20 @@ static int simple_mul_workgroup(void* params_ptr, void* context,
     fprintf(plugin->file, "processor_data[0]=%" PRIX64 "\n",
             params->processor_data[0]);
   }
-  for (size_t i = 0; i < params->size; ++i) {
-    float curr_lhs = params->binding0[params->binding0_offset + i];
-    float curr_rhs = params->binding1[params->binding1_offset + i];
-    float curr_output = params->binding2[params->binding2_offset + i];
-    fprintf(plugin->file, "mul2[%zu:%zu](%g * %g = %g)\n", params->tid, i,
-            curr_lhs, curr_rhs, curr_output);
+  for (size_t i = 0; i < params->size0; ++i) {
+    for (size_t j = 0; j < params->size1; ++j) {
+      float curr_lhs = params->binding0[params->binding0_offset +
+                                        i * params->binding0_stride0 +
+                                        j * params->binding0_stride1];
+      float curr_rhs = params->binding1[params->binding1_offset +
+                                        i * params->binding1_stride0 +
+                                        j * params->binding1_stride1];
+      float curr_output = params->binding2[params->binding2_offset +
+                                           i * params->binding2_stride0 +
+                                           j * params->binding2_stride1];
+      fprintf(plugin->file, "mul2[tid=%zu:index=%zu,%zu](%g * %g = %g)\n",
+              params->tid, i, j, curr_lhs, curr_rhs, curr_output);
+    }
   }
 
   return 0;
