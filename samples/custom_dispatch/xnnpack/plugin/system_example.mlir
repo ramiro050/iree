@@ -10,27 +10,35 @@
 // RUN: iree-compile --iree-hal-target-backends=llvm-cpu %s | \
 // RUN: iree-run-module \
 // RUN:     --device=local-sync \
-// RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/cpu/plugin/system_plugin$IREE_DYLIB_EXT \
+// RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/xnnpack/plugin/system_plugin$IREE_DYLIB_EXT \
 // RUN:     --module=- \
 // RUN:     --function=mixed_invocation \
-// RUN:     --input=8xf32=2 \
-// RUN:     --input=8xf32=4 | \
+// RUN:     --input=2x4xf32=2 \
+// RUN:     --input=2x4xf32=4 | \
 // RUN: FileCheck %s --check-prefix=CHECK-SYSTEM
 
 // CHECK-SYSTEM: EXEC @mixed_invocation
 // simple_mul_workgroup
+// CHECK-SYSTEM: size0_0=2, size0_1=4
+// CHECK-SYSTEM: stride0_0=4, stride0_1=1
+// CHECK-SYSTEM: size1_0=2, size1_1=4
+// CHECK-SYSTEM: stride1_0=4, stride1_1=1
+// CHECK-SYSTEM: size2_0=2, size2_1=4
+// CHECK-SYSTEM: stride2_0=4, stride2_1=1
+// CHECK-SYSTEM: dim0=2
+// CHECK-SYSTEM: dim1=4
 // CHECK-SYSTEM: processor_id=
 // CHECK-SYSTEM: processor_data[0]=
-// CHECK-SYSTEM: mul[0:0](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:1](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:2](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:3](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:4](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:5](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:6](2 * 4 = 8)
-// CHECK-SYSTEM: mul[0:7](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=0,0](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=0,1](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=0,2](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=0,3](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=1,0](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=1,1](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=1,2](2 * 4 = 8)
+// CHECK-SYSTEM: mul2[tid=0:index=1,3](2 * 4 = 8)
 // arith.addf 8 + 4 = 12
-// CHECK-SYSTEM: 8xf32=12 12 12 12 12 12 12 12
+// CHECK-SYSTEM: 2x4xf32=[12 12 12 12][12 12 12 12]
 
 module @example {
 
@@ -57,10 +65,25 @@ module @example {
       func.func private @simple_mul_workgroup(
           %binding0: memref<f32>,
           %binding0_offset : index,
+          %binding0_size0 : index,
+          %binding0_size1 : index,
+          %binding0_stride0 : index,
+          %binding0_stride1 : index,
           %binding1: memref<f32>,
           %binding1_offset : index,
+          %binding1_size0 : index,
+          %binding1_size1 : index,
+          %binding1_stride0 : index,
+          %binding1_stride1 : index,
           %binding2: memref<f32>,
-          %binding2_offset : index, %dim: index, %tid : index) attributes {
+          %binding2_offset : index,
+          %binding2_size0 : index,
+          %binding2_size1 : index,
+          %binding2_stride0 : index,
+          %binding2_stride1 : index,
+          %dim0: index,
+          %dim1: index,
+          %tid : index) attributes {
         // We can include some additional fields on the parameters struct as
         // needed. Here we request which processor is executing the call and
         // its data fields as defined by runtime/src/iree/schemas/cpu_data.h.
@@ -76,7 +99,8 @@ module @example {
           %binding0: !stream.binding,
           %binding1: !stream.binding,
           %binding2: !stream.binding,
-          %dim: index) {
+          %dim0: index,
+          %dim1: index) {
         %c0 = arith.constant 0 : index
 
         // This function is invoked once per workgroup so determine where this
@@ -87,23 +111,27 @@ module @example {
         %tid = affine.apply affine_map<()[s0] -> (s0 * 64)>()[%workgroup_id_x]
 
         // Bindings are accessed by reference.
-        %memref0 = stream.binding.subspan %binding0[%c0] : !stream.binding -> memref<?xf32>{%dim}
-        %memref1 = stream.binding.subspan %binding1[%c0] : !stream.binding -> memref<?xf32>{%dim}
-        %memref2 = stream.binding.subspan %binding2[%c0] : !stream.binding -> memref<?xf32>{%dim}
+        %memref0 = stream.binding.subspan %binding0[%c0] : !stream.binding -> memref<?x?xf32>{%dim0, %dim1}
+        %memref1 = stream.binding.subspan %binding1[%c0] : !stream.binding -> memref<?x?xf32>{%dim0, %dim1}
+        %memref2 = stream.binding.subspan %binding2[%c0] : !stream.binding -> memref<?x?xf32>{%dim0, %dim1}
 
-        %base0, %offset0, %size0, %stride0 = memref.extract_strided_metadata %memref0
-            : memref<?xf32> -> memref<f32>, index, index, index
-        %base1, %offset1, %size1, %stride1 = memref.extract_strided_metadata %memref1
-            : memref<?xf32> -> memref<f32>, index, index, index
-        %base2, %offset2, %size2, %stride2 = memref.extract_strided_metadata %memref2
-            : memref<?xf32> -> memref<f32>, index, index, index
+        %base0, %offset0, %sizes0:2, %strides0:2 = memref.extract_strided_metadata %memref0
+            : memref<?x?xf32> -> memref<f32>, index, index, index, index, index
+        %base1, %offset1, %sizes1:2, %strides1:2 = memref.extract_strided_metadata %memref1
+            : memref<?x?xf32> -> memref<f32>, index, index, index, index, index
+        %base2, %offset2, %sizes2:2, %strides2:2 = memref.extract_strided_metadata %memref2
+            : memref<?x?xf32> -> memref<f32>, index, index, index, index, index
         
 
         // Call the externally defined C function with an (almost) plain C
         // calling convention. This will be fetched at runtime from the plugin binary.
         func.call @simple_mul_workgroup(
-            %base0, %offset0, %base1, %offset1, %base2, %offset2, %dim, %workgroup_id_x)
-            : (memref<f32>, index, memref<f32>, index, memref<f32>, index, index, index) -> ()
+            %base0, %offset0, %sizes0#0, %sizes0#1, %strides0#0, %strides0#1,
+            %base1, %offset1, %sizes1#0, %sizes1#1, %strides1#0, %strides1#1,
+            %base2, %offset2, %sizes2#0, %sizes2#1, %strides2#0, %strides2#1,
+            %dim0, %dim1,
+            %workgroup_id_x)
+            : (memref<f32>, index, index, index, index, index, memref<f32>, index, index, index, index, index, memref<f32>, index, index, index, index, index, index, index, index) -> ()
 
         // NOTE: this is code generated as normal - other MLIR ops can be used
         // here for looping/control flow, vector operations, linalg, etc.
@@ -120,24 +148,26 @@ module @example {
   //  --device=local-sync
   //  --executable_plugin=system_plugin.so
   //  --function=mixed_invocation
-  //  --input=8xf32=2
-  //  --input=8xf32=4
-  func.func @mixed_invocation(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+  //  --input=2x4xf32=2
+  //  --input=2x4xf32=4
+  func.func @mixed_invocation(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
     // The only externally available metadata in the dispatch are the values
     // passed in as operands. Here we pass in the dynamic dimension.
     %c0 = arith.constant 0 : index
-    %dim = tensor.dim %arg0, %c0 : tensor<?xf32>
+    %dim0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
+    %c1 = arith.constant 1 : index
+    %dim1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
 
     // Dispatch a basic `ret = lhs * rhs` using an external function.
     // This form (@executable::@export) allows for automatic variant selection
     // when multi-targeting.
-    %0 = flow.dispatch @executable::@simple_mul[%dim](%arg0, %arg1, %dim) : (tensor<?xf32>{%dim}, tensor<?xf32>{%dim}, index) -> tensor<?xf32>{%dim}
+    %0 = flow.dispatch @executable::@simple_mul[%dim0](%arg0, %arg1, %dim0, %dim1) : (tensor<?x?xf32>{%dim0, %dim1}, tensor<?x?xf32>{%dim0, %dim1}, index, index) -> tensor<?x?xf32>{%dim0, %dim1}
 
     // Code gen some other ops - these will interleave with hand-authored
     // ones but naturally won't be able to fuse with them.
-    %1 = arith.addf %0, %arg1 : tensor<?xf32>
+    %1 = arith.addf %0, %arg1 : tensor<?x?xf32>
 
-    return %1 : tensor<?xf32>
+    return %1 : tensor<?x?xf32>
   }
 
 }  // module
