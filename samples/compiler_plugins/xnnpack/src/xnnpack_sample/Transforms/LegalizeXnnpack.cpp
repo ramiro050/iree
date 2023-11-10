@@ -4,7 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -16,6 +18,39 @@
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {
+static func::FuncOp createFuncOp(
+    OpBuilder &b, Location loc, FunctionType type, std::string name,
+    function_ref<void(OpBuilder &, Location, ArrayRef<BlockArgument>)>
+        bodyBuild) {
+  auto func = b.create<func::FuncOp>(loc, name, type);
+  auto *entryBlock = func.addEntryBlock();
+  auto entryBuilder = OpBuilder::atBlockBegin(entryBlock);
+  bodyBuild(entryBuilder, loc, entryBlock->getArguments());
+  return func;
+}
+
+static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
+  auto importBuilder = OpBuilder::atBlockBegin(m.getBody());
+  auto funcType = FunctionType::get(op->getContext(), op->getOperandTypes(),
+                                    op->getResultTypes());
+  auto func = createFuncOp(
+      importBuilder, op->getLoc(), funcType, "xnnpack.mul2",
+      [](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands) {
+        // TODO(ramiro050): check that operands are tensors
+        Value firstOperand = operands[0];
+        RankedTensorType operandType =
+            firstOperand.getType().cast<RankedTensorType>();
+        Type elementType = operandType.getElementType();
+        // TODO(ramiro050): handle rank greater than 1
+        Value c0 = b.create<arith::ConstantIndexOp>(loc, 0);
+        Value d0 = b.create<tensor::DimOp>(loc, firstOperand, c0);
+        Value dest = b.create<tensor::EmptyOp>(loc, getAsOpFoldResult({d0}),
+                                               elementType);
+        b.create<func::ReturnOp>(loc, dest);
+      });
+  func.setPrivate();
+  return success();
+}
 
 class LegalizeXnnpackPass
     : public ::impl::LegalizeXnnpackBase<LegalizeXnnpackPass> {
@@ -39,6 +74,16 @@ class LegalizeXnnpackPass
         OpBuilder b(op);
         b.create<func::CallOp>(printOp.getLoc(), "xnnpack.print", TypeRange{});
         printOp.erase();
+      } else if (auto mul2Op = dyn_cast<IREE::Xnnpack::Mul2Op>(op)) {
+        // TODO(ramiro050): handle this properly
+        if (failed(defineUKernelCall(m, op))) return;
+        OpBuilder b(op);
+        Value func =
+            b.create<func::CallOp>(mul2Op.getLoc(), "xnnpack.mul2",
+                                   mul2Op.getType(), mul2Op.getOperands())
+                .getResult(0);
+        mul2Op.replaceAllUsesWith(func);
+        mul2Op.erase();
       }
     });
   }
