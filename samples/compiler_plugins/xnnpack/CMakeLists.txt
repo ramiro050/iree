@@ -89,6 +89,7 @@ iree_cc_library(
     MLIRFuncDialect
     MLIRIR
     MLIRPass
+    iree::compiler::Dialect::Flow::IR
   PUBLIC
 )
 

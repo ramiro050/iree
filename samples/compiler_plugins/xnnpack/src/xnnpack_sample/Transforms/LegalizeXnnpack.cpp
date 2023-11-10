@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -20,12 +21,13 @@ namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {
 static func::FuncOp createFuncOp(
     OpBuilder &b, Location loc, FunctionType type, std::string name,
-    function_ref<void(OpBuilder &, Location, ArrayRef<BlockArgument>)>
+    function_ref<void(OpBuilder &, Location, ArrayRef<BlockArgument>,
+                      ArrayRef<Type>)>
         bodyBuild) {
   auto func = b.create<func::FuncOp>(loc, name, type);
   auto *entryBlock = func.addEntryBlock();
   auto entryBuilder = OpBuilder::atBlockBegin(entryBlock);
-  bodyBuild(entryBuilder, loc, entryBlock->getArguments());
+  bodyBuild(entryBuilder, loc, entryBlock->getArguments(), type.getResults());
   return func;
 }
 
@@ -35,7 +37,8 @@ static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
                                     op->getResultTypes());
   auto func = createFuncOp(
       importBuilder, op->getLoc(), funcType, "xnnpack.mul2",
-      [](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands) {
+      [](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands,
+         ArrayRef<Type> resultTypes) {
         // TODO(ramiro050): check that operands are tensors
         Value firstOperand = operands[0];
         RankedTensorType operandType =
@@ -46,6 +49,16 @@ static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
         Value d0 = b.create<tensor::DimOp>(loc, firstOperand, c0);
         Value dest = b.create<tensor::EmptyOp>(loc, getAsOpFoldResult({d0}),
                                                elementType);
+
+        auto dispatchRegion = b.create<IREE::Flow::DispatchRegionOp>(
+            loc, resultTypes, /*result_dims=*/ValueRange{d0},
+            /*workload=*/ValueRange{});
+        Block &dispatchBody = dispatchRegion.getBody().emplaceBlock();
+        {
+          OpBuilder::InsertionGuard guard(b);
+          b.setInsertionPointToStart(&dispatchBody);
+          b.create<Flow::ReturnOp>(loc, dest);
+        }
         b.create<func::ReturnOp>(loc, dest);
       });
   func.setPrivate();
