@@ -21,7 +21,7 @@
 namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {
 static func::FuncOp createFuncOp(
-    OpBuilder &b, Location loc, FunctionType type, std::string name,
+    OpBuilder &b, Location loc, FunctionType type, llvm::StringRef name,
     function_ref<void(OpBuilder &, Location, ArrayRef<BlockArgument>,
                       ArrayRef<Type>)>
         bodyBuild) {
@@ -32,14 +32,14 @@ static func::FuncOp createFuncOp(
   return func;
 }
 
-static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
-  auto importBuilder = OpBuilder::atBlockBegin(m.getBody());
+static void createUKernelGeneric(OpBuilder &moduleBuilder, Operation *op) {
   auto funcType = FunctionType::get(op->getContext(), op->getOperandTypes(),
                                     op->getResultTypes());
+  llvm::StringRef opName = op->getName().getStringRef();
   auto func = createFuncOp(
-      importBuilder, op->getLoc(), funcType, "xnnpack.mul2",
-      [](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands,
-         ArrayRef<Type> resultTypes) {
+      moduleBuilder, op->getLoc(), funcType, opName,
+      [opName](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands,
+               ArrayRef<Type> resultTypes) {
         Value firstOperand = operands[0];
         // TODO(ramiro050): check that operands are tensors
         RankedTensorType operandType =
@@ -62,52 +62,35 @@ static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
           OpBuilder::InsertionGuard guard(b);
           b.setInsertionPointToStart(&dispatchBody);
 
-          b.create<IREE::Codegen::UKernelGenericOp>(
-              loc, resultTypes, "xnnpack_mul2_workgroup", operands, dest,
-              ValueRange{d0}, /*fn_def_attrs=*/nullptr,
-              /*strided_outer_dims=*/nullptr);
+          auto ukernel =
+              b.create<IREE::Codegen::UKernelGenericOp>(
+                   loc, resultTypes, (opName + "_workgroup").str(), operands,
+                   dest, ValueRange{d0}, /*fn_def_attrs=*/nullptr,
+                   /*strided_outer_dims=*/nullptr)
+                  .getResults();
 
-          b.create<Flow::ReturnOp>(loc, dest);
+          b.create<Flow::ReturnOp>(loc, ukernel);
         }
-        b.create<func::ReturnOp>(loc, dest);
+        b.create<func::ReturnOp>(loc, dispatchRegion.getResults());
       });
   func.setPrivate();
-  return success();
 }
 
 class LegalizeXnnpackPass
     : public ::impl::LegalizeXnnpackBase<LegalizeXnnpackPass> {
  public:
   void runOnOperation() override {
-    auto *context = &getContext();
-    // TODO: This is all just a placeholder. To make it real, we should be
-    // checking if the import already exists and likely doing some more fancy
-    // lowering.
-    // Add imports.
     auto m = getOperation();
     auto importBuilder = OpBuilder::atBlockBegin(m.getBody());
-    importBuilder
-        .create<func::FuncOp>(m.getLoc(), "xnnpack.print",
-                              FunctionType::get(context, {}, {}))
-        .setPrivate();
-
-    // Legalize operations.
     m.walk([&](Operation *op) {
-      if (auto printOp = dyn_cast<IREE::Xnnpack::PrintOp>(op)) {
-        OpBuilder b(op);
-        b.create<func::CallOp>(printOp.getLoc(), "xnnpack.print", TypeRange{});
-        printOp.erase();
-      } else if (auto mul2Op = dyn_cast<IREE::Xnnpack::Mul2Op>(op)) {
-        // TODO(ramiro050): handle this properly
-        if (failed(defineUKernelCall(m, op))) return;
-        OpBuilder b(op);
-        Value func =
-            b.create<func::CallOp>(mul2Op.getLoc(), "xnnpack.mul2",
-                                   mul2Op.getType(), mul2Op.getOperands())
-                .getResult(0);
-        mul2Op.replaceAllUsesWith(func);
-        mul2Op.erase();
-      }
+      if (op->getDialect()->getNamespace() != "xnnpack") return;
+      createUKernelGeneric(importBuilder, op);
+      OpBuilder b(op);
+      auto func =
+          b.create<func::CallOp>(op->getLoc(), op->getName().getStringRef(),
+                                 op->getResultTypes(), op->getOperands());
+      op->replaceAllUsesWith(func.getResults());
+      op->erase();
     });
   }
 };
