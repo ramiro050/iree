@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree/compiler/Codegen/Dialect/UKernelOps.h"
 #include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -39,14 +40,17 @@ static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
       importBuilder, op->getLoc(), funcType, "xnnpack.mul2",
       [](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands,
          ArrayRef<Type> resultTypes) {
-        // TODO(ramiro050): check that operands are tensors
         Value firstOperand = operands[0];
+        // TODO(ramiro050): check that operands are tensors
         RankedTensorType operandType =
             firstOperand.getType().cast<RankedTensorType>();
         Type elementType = operandType.getElementType();
-        // TODO(ramiro050): handle rank greater than 1
+        assert(operandType.getRank() == 1 &&
+               "TODO(ramiro050): handle rank greater than 1");
         Value c0 = b.create<arith::ConstantIndexOp>(loc, 0);
         Value d0 = b.create<tensor::DimOp>(loc, firstOperand, c0);
+        assert(resultTypes.size() == 1 &&
+               "TODO(ramiro050): handle multiple returns");
         Value dest = b.create<tensor::EmptyOp>(loc, getAsOpFoldResult({d0}),
                                                elementType);
 
@@ -57,6 +61,12 @@ static LogicalResult defineUKernelCall(ModuleOp m, Operation *op) {
         {
           OpBuilder::InsertionGuard guard(b);
           b.setInsertionPointToStart(&dispatchBody);
+
+          b.create<IREE::Codegen::UKernelGenericOp>(
+              loc, resultTypes, "xnnpack_mul2_workgroup", operands, dest,
+              ValueRange{d0}, /*fn_def_attrs=*/nullptr,
+              /*strided_outer_dims=*/nullptr);
+
           b.create<Flow::ReturnOp>(loc, dest);
         }
         b.create<func::ReturnOp>(loc, dest);
