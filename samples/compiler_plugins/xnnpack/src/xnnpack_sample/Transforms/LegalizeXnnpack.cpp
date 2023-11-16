@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree/compiler/Codegen/Dialect/IREECodegenDialect.h"
 #include "iree/compiler/Codegen/Dialect/UKernelOps.h"
 #include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -79,6 +80,10 @@ static void createUKernelGeneric(OpBuilder &moduleBuilder, Operation *op) {
 class LegalizeXnnpackPass
     : public ::impl::LegalizeXnnpackBase<LegalizeXnnpackPass> {
  public:
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<tensor::TensorDialect, IREE::Flow::FlowDialect,
+                    IREE::Codegen::IREECodegenDialect>();
+  }
   void runOnOperation() override {
     auto m = getOperation();
     auto importBuilder = OpBuilder::atBlockBegin(m.getBody());
