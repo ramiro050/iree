@@ -9,6 +9,9 @@
 // CHECK:           %[[VAL_5:.*]] = flow.dispatch.region -> (tensor<?xf32>{%[[VAL_3]]}) {
 // CHECK:             %[[VAL_6:.*]] = iree_codegen.ukernel.generic "xnnpack.mul2_workgroup" ins(%[[VAL_0]], %[[VAL_1]] : tensor<?xf32>, tensor<?xf32>) outs(%[[VAL_4]] : tensor<?xf32>) (%[[VAL_3]] : index) -> tensor<?xf32>
 // CHECK:             flow.return %[[VAL_6]] : tensor<?xf32>
+// CHECK:           } count() -> (index, index, index) {
+// CHECK:             %[[VAL_7:.*]] = arith.constant 1 : index
+// CHECK:             flow.return %[[VAL_7]], %[[VAL_7]], %[[VAL_7]] : index, index, index
 // CHECK:           return %[[VAL_5]] : tensor<?xf32>
 
 // CHECK-LABEL:   func.func @main(

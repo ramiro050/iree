@@ -21,60 +21,81 @@
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {
-static func::FuncOp createFuncOp(
-    OpBuilder &b, Location loc, FunctionType type, llvm::StringRef name,
-    function_ref<void(OpBuilder &, Location, ArrayRef<BlockArgument>,
-                      ArrayRef<Type>)>
+static FailureOr<func::FuncOp> createFuncOp(
+    RewriterBase &rewriter, Location loc, FunctionType type,
+    llvm::StringRef name,
+    function_ref<LogicalResult(RewriterBase &, Location,
+                               ArrayRef<BlockArgument>, ArrayRef<Type>)>
         bodyBuild) {
-  auto func = b.create<func::FuncOp>(loc, name, type);
+  auto func = rewriter.create<func::FuncOp>(loc, name, type);
   auto *entryBlock = func.addEntryBlock();
   auto entryBuilder = OpBuilder::atBlockBegin(entryBlock);
-  bodyBuild(entryBuilder, loc, entryBlock->getArguments(), type.getResults());
+  IRRewriter entryRewriter(entryBuilder);
+  if (failed(bodyBuild(entryRewriter, loc, entryBlock->getArguments(),
+                       type.getResults()))) {
+    return rewriter.notifyMatchFailure(func,
+                                       "unable to create body of function");
+  }
   return func;
 }
 
-static void createUKernelGeneric(OpBuilder &moduleBuilder, Operation *op) {
+static FailureOr<func::FuncOp> createUKernelGeneric(
+    RewriterBase &moduleRewriter, Operation *op) {
   auto funcType = FunctionType::get(op->getContext(), op->getOperandTypes(),
                                     op->getResultTypes());
   llvm::StringRef opName = op->getName().getStringRef();
   auto func = createFuncOp(
-      moduleBuilder, op->getLoc(), funcType, opName,
-      [opName](OpBuilder &b, Location loc, ArrayRef<BlockArgument> operands,
-               ArrayRef<Type> resultTypes) {
+      moduleRewriter, op->getLoc(), funcType, opName,
+      [opName, op](RewriterBase &rewriter, Location loc,
+                   ArrayRef<BlockArgument> operands,
+                   ArrayRef<Type> resultTypes) -> LogicalResult {
         Value firstOperand = operands[0];
         // TODO(ramiro050): check that operands are tensors
         RankedTensorType operandType =
             firstOperand.getType().cast<RankedTensorType>();
         Type elementType = operandType.getElementType();
-        assert(operandType.getRank() == 1 &&
-               "TODO(ramiro050): handle rank greater than 1");
-        Value c0 = b.create<arith::ConstantIndexOp>(loc, 0);
-        Value d0 = b.create<tensor::DimOp>(loc, firstOperand, c0);
-        assert(resultTypes.size() == 1 &&
-               "TODO(ramiro050): handle multiple returns");
-        Value dest = b.create<tensor::EmptyOp>(loc, getAsOpFoldResult({d0}),
-                                               elementType);
+        if (operandType.getRank() != 1) {
+          return rewriter.notifyMatchFailure(op, "unimplemented: rank != 1");
+        }
+        if (resultTypes.size() != 1) {
+          return rewriter.notifyMatchFailure(op,
+                                             "unimplemented: multiple returns");
+        }
+        Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+        Value d0 = rewriter.create<tensor::DimOp>(loc, firstOperand, c0);
+        Value dest = rewriter.create<tensor::EmptyOp>(
+            loc, getAsOpFoldResult({d0}), elementType);
 
-        auto dispatchRegion = b.create<IREE::Flow::DispatchRegionOp>(
+        auto dispatchRegion = rewriter.create<IREE::Flow::DispatchRegionOp>(
             loc, resultTypes, /*result_dims=*/ValueRange{d0},
             /*workload=*/ValueRange{});
         Block &dispatchBody = dispatchRegion.getBody().emplaceBlock();
         {
-          OpBuilder::InsertionGuard guard(b);
-          b.setInsertionPointToStart(&dispatchBody);
-
+          OpBuilder::InsertionGuard guard(rewriter);
+          rewriter.setInsertionPointToStart(&dispatchBody);
           auto ukernel =
-              b.create<IREE::Codegen::UKernelGenericOp>(
-                   loc, resultTypes, (opName + "_workgroup").str(), operands,
-                   dest, ValueRange{d0}, /*fn_def_attrs=*/nullptr,
-                   /*strided_outer_dims=*/nullptr)
+              rewriter
+                  .create<IREE::Codegen::UKernelGenericOp>(
+                      loc, resultTypes, (opName + "_workgroup").str(), operands,
+                      dest, ValueRange{d0}, /*fn_def_attrs=*/nullptr,
+                      /*strided_outer_dims=*/nullptr)
                   .getResults();
-
-          b.create<Flow::ReturnOp>(loc, ukernel);
+          rewriter.create<Flow::ReturnOp>(loc, ukernel);
         }
-        b.create<func::ReturnOp>(loc, dispatchRegion.getResults());
+
+        Block &dispatchWorkgroupCount =
+            dispatchRegion.getWorkgroupCount().emplaceBlock();
+        {
+          OpBuilder::InsertionGuard guard(rewriter);
+          rewriter.setInsertionPointToStart(&dispatchWorkgroupCount);
+          Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+          rewriter.create<Flow::ReturnOp>(loc, ValueRange{c1, c1, c1});
+        }
+
+        rewriter.create<func::ReturnOp>(loc, dispatchRegion.getResults());
+        return success();
       });
-  func.setPrivate();
+  return func;
 }
 
 class LegalizeXnnpackPass
@@ -87,16 +108,25 @@ class LegalizeXnnpackPass
   void runOnOperation() override {
     auto m = getOperation();
     auto importBuilder = OpBuilder::atBlockBegin(m.getBody());
-    m.walk([&](Operation *op) {
-      if (op->getDialect()->getNamespace() != "xnnpack") return;
-      createUKernelGeneric(importBuilder, op);
+    IRRewriter rewriter(importBuilder);
+    auto result = m.walk([&](Operation *op) -> WalkResult {
+      if (op->getDialect()->getNamespace() != "xnnpack")
+        return WalkResult::advance();
+
+      FailureOr<func::FuncOp> ukernelGeneric =
+          createUKernelGeneric(rewriter, op);
+      if (failed(ukernelGeneric)) return WalkResult::interrupt();
+      ukernelGeneric->setPrivate();
+
       OpBuilder b(op);
       auto func =
-          b.create<func::CallOp>(op->getLoc(), op->getName().getStringRef(),
+          b.create<func::CallOp>(op->getLoc(), ukernelGeneric->getName(),
                                  op->getResultTypes(), op->getOperands());
       op->replaceAllUsesWith(func.getResults());
       op->erase();
+      return WalkResult::advance();
     });
+    if (result.wasInterrupted()) signalPassFailure();
   }
 };
 
