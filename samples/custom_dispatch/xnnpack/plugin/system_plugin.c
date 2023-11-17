@@ -197,6 +197,98 @@ static int simple_mul_workgroup(void* params_ptr, void* context,
   return 0;
 }
 
+// TODO(ramiro050): refactor common logic with 2d case above
+static int mul2_1d_workgroup(void* params_ptr, void* context, void* reserved) {
+  system_plugin_t* plugin = (system_plugin_t*)context;
+  typedef struct {
+    const float* restrict binding0;
+    size_t binding0_offset;
+    size_t binding0_stride;
+    const float* restrict binding1;
+    size_t binding1_offset;
+    size_t binding1_stride;
+    float* restrict binding2;
+    size_t binding2_offset;
+    size_t binding2_stride;
+    size_t size;
+  } params_t;
+  const params_t* params = (const params_t*)params_ptr;
+
+  enum xnn_status status;
+  const struct xnn_allocator* allocator = NULL;
+  status = xnn_initialize(allocator);
+  assert(status == xnn_status_success && "unable to initialize XNNPACK");
+
+  xnn_subgraph_t subgraph = NULL;
+  status =
+      xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph);
+  assert(status == xnn_status_success && "unable to create subgraph");
+
+  const size_t dims[1] = {params->size};
+  uint32_t lhs_id = XNN_INVALID_VALUE_ID;
+  status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
+                                   /*num_dims=*/1, /*dims=*/dims,
+                                   /*data=*/NULL,
+                                   /*external_id=*/0,
+                                   /*flags=*/XNN_VALUE_FLAG_EXTERNAL_INPUT,
+                                   /*id_out=*/&lhs_id);
+  assert(status == xnn_status_success && "unable to define lhs input tensor");
+
+  uint32_t rhs_id = XNN_INVALID_VALUE_ID;
+  status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
+                                   /*num_dims=*/1, /*dims=*/dims,
+                                   /*data=*/NULL,
+                                   /*external_id=*/1,
+                                   /*flags=*/XNN_VALUE_FLAG_EXTERNAL_INPUT,
+                                   /*id_out=*/&rhs_id);
+  assert(status == xnn_status_success && "unable to define rhs input tensor");
+
+  uint32_t output_id = XNN_INVALID_VALUE_ID;
+  status = xnn_define_tensor_value(subgraph, xnn_datatype_fp32,
+                                   /*num_dims=*/1, dims, NULL,
+                                   /*external_id=*/2,
+                                   XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &output_id);
+  assert(status == xnn_status_success && "unable to define output tensor");
+
+  status = xnn_define_multiply2(subgraph, -100.0f, 100.0f, lhs_id, rhs_id,
+                                output_id, /*flags=*/0);
+  assert(status == xnn_status_success && "unable to define multiply2");
+
+  xnn_runtime_t runtime = NULL;
+  status = xnn_create_runtime(subgraph, &runtime);
+  assert(status == xnn_status_success && "unable to create runtime");
+  struct xnn_external_value lhs_external_value = {
+      lhs_id, (void*)&(params->binding0[params->binding0_offset])};
+  struct xnn_external_value rhs_external_value = {
+      rhs_id, (void*)&(params->binding1[params->binding1_offset])};
+  struct xnn_external_value output_external_value = {
+      output_id, (void*)&(params->binding2[params->binding2_offset])};
+  const struct xnn_external_value externals[3] = {
+      lhs_external_value, rhs_external_value, output_external_value};
+  status = xnn_setup_runtime(runtime, /*num_external_values=*/3, externals);
+  assert(status == xnn_status_success && "unable to setup runtime");
+
+  status = xnn_invoke_runtime(runtime);
+  assert(status == xnn_status_success && "unable to invoke runtime");
+
+  status = xnn_delete_runtime(runtime);
+  assert(status == xnn_status_success && "unable to delete runtime");
+  status = xnn_delete_subgraph(subgraph);
+  assert(status == xnn_status_success && "unable to delete subgraph");
+  status = xnn_deinitialize();
+  assert(status == xnn_status_success && "unable to deinitialize");
+
+  for (size_t i = 0; i < params->size; ++i) {
+    float curr_lhs = params->binding0[params->binding0_offset + i];
+    float curr_rhs = params->binding1[params->binding1_offset + i];
+    float curr_output = params->binding2[params->binding2_offset + i];
+    fprintf(plugin->file, "mul2[%zu](%g * %g = %g)\n", i, curr_lhs, curr_rhs,
+            curr_output);
+  }
+
+  return 0;
+}
+
 // Called once for each plugin load and paired with a future call to unload.
 // Even in standalone mode we could allocate using environment->host_allocator,
 // set an out_self pointer, and parse parameters but here in system mode we can
@@ -260,6 +352,11 @@ static iree_hal_executable_plugin_status_t system_plugin_resolve(
     if (iree_hal_executable_plugin_strcmp(symbol_name,
                                           "simple_mul_workgroup") == 0) {
       params->out_fn_ptrs[i] = simple_mul_workgroup;
+      params->out_fn_contexts[i] =
+          plugin;  // passing plugin to each import call
+    } else if (iree_hal_executable_plugin_strcmp(
+                   symbol_name, "xnnpack.mul2_workgroup") == 0) {
+      params->out_fn_ptrs[i] = mul2_1d_workgroup;
       params->out_fn_contexts[i] =
           plugin;  // passing plugin to each import call
     } else {
