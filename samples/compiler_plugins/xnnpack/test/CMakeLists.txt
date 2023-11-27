@@ -14,7 +14,8 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "print.mlir"
+    "mul2-1d-e2e.mlir"
+    "xnnpack-legalize.mlir"
   TOOLS
     FileCheck
     iree-opt
