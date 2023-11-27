@@ -16,7 +16,8 @@ iree_lit_test_suite(
     name = "lit",
     srcs = enforce_glob(
         [
-            "print.mlir",
+            "mul2-1d-e2e.mlir",
+            "xnnpack-legalize.mlir",
         ],
         include = ["*.mlir"],
     ),
