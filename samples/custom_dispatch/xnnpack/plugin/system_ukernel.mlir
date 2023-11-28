@@ -8,14 +8,14 @@
 // RUN: iree-run-module \
 // RUN:     --device=local-sync \
 // RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/xnnpack/plugin/system_plugin$IREE_DYLIB_EXT \
-// RUN:     --function="xnnpack.mul2" \
+// RUN:     --function="main" \
 // RUN:     --module=- \
 // RUN:     --input=8xf32=2 \
 // RUN:     --input=8xf32=4 | \
 // RUN: FileCheck %s --check-prefix=CHECK-SYSTEM
 
-// CHECK-SYSTEM: EXEC @xnnpack.mul2
-// xnnpack.mul2_workgroup
+// CHECK-SYSTEM: EXEC @main
+// xnnpack.multiply2_workgroup
 // CHECK_SYSTEM: mul2[0](2 * 4 = 8)
 // CHECK_SYSTEM: mul2[1](2 * 4 = 8)
 // CHECK_SYSTEM: mul2[2](2 * 4 = 8)
@@ -27,12 +27,14 @@
 // CHECK_SYSTEM: result[0]: hal.buffer_view
 // CHECK_SYSTEM: 8xf32=8 8 8 8 8 8 8 8
 
-func.func @xnnpack.mul2(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
   %c0 = arith.constant 0 : index
   %dim = tensor.dim %arg0, %c0 : tensor<?xf32>
+  %c0_0 = arith.constant 0 : index
+  %dim_1 = tensor.dim %arg1, %c0_0 : tensor<?xf32>
   %0 = tensor.empty(%dim) : tensor<?xf32>
   %1 = flow.dispatch.region -> (tensor<?xf32>{%dim}) {
-    %2 = iree_codegen.ukernel.generic "xnnpack.mul2_workgroup" ins(%arg0, %arg1 : tensor<?xf32>, tensor<?xf32>) outs(%0 : tensor<?xf32>) (%dim : index) -> tensor<?xf32>
+    %2 = iree_codegen.ukernel.generic "xnnpack.multiply2_workgroup" ins(%arg0, %arg1 : tensor<?xf32>, tensor<?xf32>) outs(%0 : tensor<?xf32>) (%dim, %dim_1, %dim : index, index, index) -> tensor<?xf32>
     flow.return %2 : tensor<?xf32>
   } count() -> (index, index, index) {
     %c1 = arith.constant 1 : index

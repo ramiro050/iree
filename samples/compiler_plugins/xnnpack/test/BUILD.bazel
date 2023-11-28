@@ -17,6 +17,7 @@ iree_lit_test_suite(
     srcs = enforce_glob(
         [
             "mul2-1d-e2e.mlir",
+            "batch_matrix_multiply_e2e.mlir",
             "xnnpack-legalize.mlir",
         ],
         include = ["*.mlir"],

@@ -29,14 +29,67 @@ static FailureOr<func::FuncOp> createFuncOp(
         bodyBuild) {
   auto func = rewriter.create<func::FuncOp>(loc, name, type);
   auto *entryBlock = func.addEntryBlock();
-  auto entryBuilder = OpBuilder::atBlockBegin(entryBlock);
-  IRRewriter entryRewriter(entryBuilder);
-  if (failed(bodyBuild(entryRewriter, loc, entryBlock->getArguments(),
-                       type.getResults()))) {
-    return rewriter.notifyMatchFailure(func,
-                                       "unable to create body of function");
+  {
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointToStart(entryBlock);
+    if (failed(bodyBuild(rewriter, loc, entryBlock->getArguments(),
+                         type.getResults()))) {
+      // `bodyBuild` can leave the `FuncOp` in an invalid state, so erase it
+      // before returning.
+      rewriter.eraseOp(func);
+      return failure();
+    }
   }
   return func;
+}
+
+// For every operand in `funcOpOperands`, returns a vector with the operands
+// sizes, folded if sizes are static.
+//
+// TODO(ramiro050): this can be done a bit smarter without so much dynamic
+// casting. One option is to have a separate pass that attaches the result
+// dimension information as an attribute to each op.
+// TODO(ramiro050): improve name of `funcOpOperands`
+static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
+    Operation *op, ArrayRef<BlockArgument> funcOpOperands, OpBuilder &b) {
+  auto getDim = [&](Value tensor, int64_t dim) -> Value {
+    Value ci = b.create<arith::ConstantIndexOp>(op->getLoc(), dim);
+    Value dimValue = b.createOrFold<tensor::DimOp>(op->getLoc(), tensor, ci);
+    return dimValue;
+  };
+  auto getDims = [&](Value tensor) -> SmallVector<Value> {
+    auto tensorType = tensor.getType().cast<RankedTensorType>();
+    int64_t rank = tensorType.getRank();
+
+    SmallVector<Value> dims;
+    for (auto i : llvm::seq(rank)) dims.push_back(getDim(tensor, i));
+    return dims;
+  };
+
+  SmallVector<SmallVector<Value>> dims;
+  for (Value operand : funcOpOperands) {
+    dims.push_back(getDims(operand));
+  }
+
+  if (auto matmul = dyn_cast<BatchMatrixMultiplyOp>(op)) {
+    int64_t rankA = matmul.getA().getType().cast<RankedTensorType>().getRank();
+    int64_t rankB = matmul.getB().getType().cast<RankedTensorType>().getRank();
+    if (rankA != 3 || rankB != 3) {
+      return op->emitError("unimplemented: matmul arguments with rank != 3");
+    }
+    dims.push_back({dims[0][0], dims[0][1], dims[1][2]});
+  } else if (auto mul2 = dyn_cast<Multiply2Op>(op)) {
+    // TODO(ramiro050): I think this is supposed to do broadcasting.
+    int64_t rankA = mul2.getA().getType().cast<RankedTensorType>().getRank();
+    int64_t rankB = mul2.getB().getType().cast<RankedTensorType>().getRank();
+    if (rankA != rankB) {
+      return op->emitError("unimplemented: broadcasting");
+    }
+    dims.push_back({dims[0][0]});
+  } else {
+    llvm_unreachable("not an xnnpack op!");
+  }
+  return dims;
 }
 
 static FailureOr<func::FuncOp> createUKernelGeneric(
@@ -49,35 +102,46 @@ static FailureOr<func::FuncOp> createUKernelGeneric(
       [opName, op](RewriterBase &rewriter, Location loc,
                    ArrayRef<BlockArgument> operands,
                    ArrayRef<Type> resultTypes) -> LogicalResult {
-        Value firstOperand = operands[0];
-        // TODO(ramiro050): check that operands are tensors
-        RankedTensorType operandType =
-            firstOperand.getType().cast<RankedTensorType>();
-        Type elementType = operandType.getElementType();
-        if (operandType.getRank() != 1) {
-          return rewriter.notifyMatchFailure(op, "unimplemented: rank != 1");
+        if (llvm::any_of(operands, [](BlockArgument operand) {
+              return !operand.getType().dyn_cast<RankedTensorType>();
+            })) {
+          return op->emitError("unimplemented: non-tensor argument");
         }
+
         if (resultTypes.size() != 1) {
-          return rewriter.notifyMatchFailure(op,
-                                             "unimplemented: multiple returns");
+          return op->emitError("unimplemented: multiple returns");
         }
-        Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-        Value d0 = rewriter.create<tensor::DimOp>(loc, firstOperand, c0);
-        Value dest = rewriter.create<tensor::EmptyOp>(
-            loc, getAsOpFoldResult({d0}), elementType);
+        Type resultElementType =
+            resultTypes[0].cast<RankedTensorType>().getElementType();
+        FailureOr<SmallVector<SmallVector<Value>>> maybeDims(
+            getInputOutputDims(op, operands, rewriter));
+        if (failed(maybeDims)) return failure();
+        ArrayRef<Value> resultDims(maybeDims.value().back());
+        SmallVector<OpFoldResult> resultDimsFolded(
+            getAsOpFoldResult(resultDims));
+        auto [_, dynResultDims] =
+            decomposeMixedValues(rewriter, resultDimsFolded);
+
+        Value dest = rewriter.create<tensor::EmptyOp>(loc, resultDimsFolded,
+                                                      resultElementType);
 
         auto dispatchRegion = rewriter.create<IREE::Flow::DispatchRegionOp>(
-            loc, resultTypes, /*result_dims=*/ValueRange{d0},
+            loc, resultTypes, /*result_dims=*/dynResultDims,
             /*workload=*/ValueRange{});
         Block &dispatchBody = dispatchRegion.getBody().emplaceBlock();
         {
           OpBuilder::InsertionGuard guard(rewriter);
           rewriter.setInsertionPointToStart(&dispatchBody);
+
+          SmallVector<Value> otherOperands;
+          for (auto dims : maybeDims.value()) otherOperands.append(dims);
+
           auto ukernel =
               rewriter
                   .create<IREE::Codegen::UKernelGenericOp>(
                       loc, resultTypes, (opName + "_workgroup").str(), operands,
-                      dest, ValueRange{d0}, /*fn_def_attrs=*/nullptr,
+                      dest, otherOperands,
+                      /*fn_def_attrs=*/nullptr,
                       /*strided_outer_dims=*/nullptr)
                   .getResults();
           rewriter.create<Flow::ReturnOp>(loc, ukernel);
@@ -118,12 +182,13 @@ class LegalizeXnnpackPass
       if (failed(ukernelGeneric)) return WalkResult::interrupt();
       ukernelGeneric->setPrivate();
 
-      OpBuilder b(op);
-      auto func =
-          b.create<func::CallOp>(op->getLoc(), ukernelGeneric->getName(),
-                                 op->getResultTypes(), op->getOperands());
-      op->replaceAllUsesWith(func.getResults());
-      op->erase();
+      {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPoint(op);
+        rewriter.replaceOpWithNewOp<func::CallOp>(op, ukernelGeneric->getName(),
+                                                  op->getResultTypes(),
+                                                  op->getOperands());
+      }
       return WalkResult::advance();
     });
     if (result.wasInterrupted()) signalPassFailure();

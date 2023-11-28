@@ -14,6 +14,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "batch_matrix_multiply_e2e.mlir"
     "mul2-1d-e2e.mlir"
     "xnnpack-legalize.mlir"
   TOOLS

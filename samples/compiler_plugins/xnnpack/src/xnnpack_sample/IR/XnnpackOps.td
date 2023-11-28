@@ -18,8 +18,19 @@ class Xnnpack_Op<string mnemonic, list<Trait> traits = []> :
     Op<Xnnpack_Dialect, mnemonic, traits> {
 }
 
-def Xnnpack_Mul2Op : Xnnpack_Op<"mul2", []> {
+def Xnnpack_Multiply2Op : Xnnpack_Op<"multiply2", []> {
   let summary = "Elementwise multiplication";
+  let arguments = (ins AnyRankedTensor:$a,
+                       AnyRankedTensor:$b);
+  let results = (outs AnyRankedTensor:$result);
+
+  let assemblyFormat = [{
+    $a `,` $b attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def Xnnpack_BatchMatrixMultiplyOp : Xnnpack_Op<"batch_matrix_multiply", []> {
+  let summary = "Batch matrix multiplication";
   let arguments = (ins AnyRankedTensor:$a,
                        AnyRankedTensor:$b);
   let results = (outs AnyRankedTensor:$result);

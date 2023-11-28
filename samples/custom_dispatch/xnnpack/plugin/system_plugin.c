@@ -41,7 +41,8 @@ typedef struct {
   FILE* file;
 } system_plugin_t;
 
-static int mul2_1d_workgroup(void* params_ptr, void* context, void* reserved) {
+static int multiply2_1d_workgroup(void* params_ptr, void* context,
+                                  void* reserved) {
   system_plugin_t* plugin = (system_plugin_t*)context;
   typedef struct {
     const float* restrict binding0;
@@ -53,7 +54,9 @@ static int mul2_1d_workgroup(void* params_ptr, void* context, void* reserved) {
     float* restrict binding2;
     size_t binding2_offset;
     size_t binding2_stride;
-    size_t size;
+    size_t binding0_size;
+    size_t binding1_size;
+    size_t binding2_size;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
 
@@ -67,7 +70,10 @@ static int mul2_1d_workgroup(void* params_ptr, void* context, void* reserved) {
       xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph);
   assert(status == xnn_status_success && "unable to create subgraph");
 
-  const size_t dims[1] = {params->size};
+  assert(params->binding0_size == params->binding1_size &&
+         params->binding0_size == params->binding2_size &&
+         "unimplemented: broadcasting");
+  const size_t dims[1] = {params->binding0_size};
   uint32_t lhs_id = XNN_INVALID_VALUE_ID;
   status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
                                    /*num_dims=*/1, /*dims=*/dims,
@@ -121,7 +127,7 @@ static int mul2_1d_workgroup(void* params_ptr, void* context, void* reserved) {
   status = xnn_deinitialize();
   assert(status == xnn_status_success && "unable to deinitialize");
 
-  for (size_t i = 0; i < params->size; ++i) {
+  for (size_t i = 0; i < params->binding0_size; ++i) {
     float curr_lhs = params->binding0[params->binding0_offset + i];
     float curr_rhs = params->binding1[params->binding1_offset + i];
     float curr_output = params->binding2[params->binding2_offset + i];
@@ -129,6 +135,112 @@ static int mul2_1d_workgroup(void* params_ptr, void* context, void* reserved) {
             curr_output);
   }
 
+  return 0;
+}
+
+// TODO(ramiro050): refactor common logic with multiply2 above
+static int batch_matrix_multiply_workgroup(void* params_ptr, void* context,
+                                           void* reserved) {
+  system_plugin_t* plugin = (system_plugin_t*)context;
+  typedef struct {
+    const float* restrict binding0;
+    size_t binding0_offset;
+    size_t binding0_stride0;
+    size_t binding0_stride1;
+    size_t binding0_stride2;
+    const float* restrict binding1;
+    size_t binding1_offset;
+    size_t binding1_stride0;
+    size_t binding1_stride1;
+    size_t binding1_stride2;
+    float* restrict binding2;
+    size_t binding2_offset;
+    size_t binding2_stride0;
+    size_t binding2_stride1;
+    size_t binding2_stride2;
+    size_t binding0_size0;
+    size_t binding0_size1;
+    size_t binding0_size2;
+    size_t binding1_size0;
+    size_t binding1_size1;
+    size_t binding1_size2;
+    size_t binding2_size0;
+    size_t binding2_size1;
+    size_t binding2_size2;
+  } params_t;
+  const params_t* params = (const params_t*)params_ptr;
+
+  enum xnn_status status;
+  const struct xnn_allocator* allocator = NULL;
+  status = xnn_initialize(allocator);
+  assert(status == xnn_status_success && "unable to initialize XNNPACK");
+
+  xnn_subgraph_t subgraph = NULL;
+  status =
+      xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph);
+  assert(status == xnn_status_success && "unable to create subgraph");
+
+  assert(params->binding0_size1 == params->binding1_size0 && "invalid matmul");
+  const size_t rank = 3;
+  const size_t dims0[] = {params->binding0_size0, params->binding0_size1,
+                          params->binding0_size2};
+  const size_t dims1[] = {params->binding1_size0, params->binding1_size1,
+                          params->binding1_size2};
+  const size_t dims2[] = {params->binding2_size0, params->binding2_size1,
+                          params->binding2_size2};
+
+  uint32_t lhs_id = XNN_INVALID_VALUE_ID;
+  status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
+                                   /*num_dims=*/rank, /*dims=*/dims0,
+                                   /*data=*/NULL,
+                                   /*external_id=*/0,
+                                   /*flags=*/XNN_VALUE_FLAG_EXTERNAL_INPUT,
+                                   /*id_out=*/&lhs_id);
+  assert(status == xnn_status_success && "unable to define lhs input tensor");
+
+  uint32_t rhs_id = XNN_INVALID_VALUE_ID;
+  status = xnn_define_tensor_value(subgraph, /*datatype=*/xnn_datatype_fp32,
+                                   /*num_dims=*/rank, /*dims=*/dims1,
+                                   /*data=*/NULL,
+                                   /*external_id=*/1,
+                                   /*flags=*/XNN_VALUE_FLAG_EXTERNAL_INPUT,
+                                   /*id_out=*/&rhs_id);
+  assert(status == xnn_status_success && "unable to define rhs input tensor");
+
+  uint32_t output_id = XNN_INVALID_VALUE_ID;
+  status = xnn_define_tensor_value(subgraph, xnn_datatype_fp32,
+                                   /*num_dims=*/rank, dims2, NULL,
+                                   /*external_id=*/2,
+                                   XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &output_id);
+  assert(status == xnn_status_success && "unable to define output tensor");
+
+  status = xnn_define_batch_matrix_multiply(subgraph, lhs_id, rhs_id, output_id,
+                                            /*flags=*/0);
+  assert(status == xnn_status_success && "unable to define multiply2");
+
+  xnn_runtime_t runtime = NULL;
+  status = xnn_create_runtime(subgraph, &runtime);
+  assert(status == xnn_status_success && "unable to create runtime");
+  struct xnn_external_value lhs_external_value = {
+      lhs_id, (void*)&(params->binding0[params->binding0_offset])};
+  struct xnn_external_value rhs_external_value = {
+      rhs_id, (void*)&(params->binding1[params->binding1_offset])};
+  struct xnn_external_value output_external_value = {
+      output_id, (void*)&(params->binding2[params->binding2_offset])};
+  const struct xnn_external_value externals[3] = {
+      lhs_external_value, rhs_external_value, output_external_value};
+  status = xnn_setup_runtime(runtime, /*num_external_values=*/3, externals);
+  assert(status == xnn_status_success && "unable to setup runtime");
+
+  status = xnn_invoke_runtime(runtime);
+  assert(status == xnn_status_success && "unable to invoke runtime");
+
+  status = xnn_delete_runtime(runtime);
+  assert(status == xnn_status_success && "unable to delete runtime");
+  status = xnn_delete_subgraph(subgraph);
+  assert(status == xnn_status_success && "unable to delete subgraph");
+  status = xnn_deinitialize();
+  assert(status == xnn_status_success && "unable to deinitialize");
   return 0;
 }
 
@@ -193,8 +305,14 @@ static iree_hal_executable_plugin_status_t system_plugin_resolve(
         iree_hal_executable_plugin_import_is_optional(symbol_name);
     if (is_optional) ++symbol_name;
     if (iree_hal_executable_plugin_strcmp(symbol_name,
-                                          "xnnpack.mul2_workgroup") == 0) {
-      params->out_fn_ptrs[i] = mul2_1d_workgroup;
+                                          "xnnpack.multiply2_workgroup") == 0) {
+      params->out_fn_ptrs[i] = multiply2_1d_workgroup;
+      params->out_fn_contexts[i] =
+          plugin;  // passing plugin to each import call
+    } else if (iree_hal_executable_plugin_strcmp(
+                   symbol_name, "xnnpack.batch_matrix_multiply_workgroup") ==
+               0) {
+      params->out_fn_ptrs[i] = batch_matrix_multiply_workgroup;
       params->out_fn_contexts[i] =
           plugin;  // passing plugin to each import call
     } else {
