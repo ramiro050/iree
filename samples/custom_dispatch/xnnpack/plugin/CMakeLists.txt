@@ -46,21 +46,6 @@ add_dependencies(iree-sample-deps iree_samples_custom_dispatch_xnnpack_system_pl
 
 iree_lit_test_suite(
   NAME
-    system_example
-  SRCS
-    "system_example.mlir"
-  TOOLS
-    FileCheck
-    iree-compile
-    iree-run-module
-    iree_samples_custom_dispatch_xnnpack_system_plugin
-  LABELS
-    "driver=local-sync"
-    "hostonly"
-)
-
-iree_lit_test_suite(
-  NAME
     system_ukernel
   SRCS
     "system_ukernel.mlir"
