@@ -19,6 +19,6 @@
 // CHECK-SYSTEM: mul2[7](2 * 4 = 8)
 // CHECK-SYSTEM: 8xf32=8 8 8 8 8 8 8 8
 func.func @main(%a : tensor<?xf32>, %b : tensor<?xf32>) -> tensor<?xf32> {
-  %c = xnnpack.mul2 %a, %b : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %c = xnnpack.multiply2 %a, %b : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   func.return %c : tensor<?xf32>
 }
