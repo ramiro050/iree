@@ -35,10 +35,9 @@
 #include <unistd.h>
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 #include "iree/compiler/API/Internal/Diagnostics.h"
@@ -62,6 +61,7 @@
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/CAPI/IR.h"
@@ -90,6 +90,116 @@
 namespace mlir::iree_compiler::embed {
 namespace {
 
+// If not using memfd_create, then we need to align output buffers
+// similarly, which is unfortunately, quite platform specific.
+// While memfd_create aligns to a page, we align these to 64 bytes,
+// which matches runtime requirements.
+const size_t kOutputBufferAlignment = 64;
+
+template <typename T>
+struct rt_aligned_allocator {
+  using value_type = T;
+  rt_aligned_allocator() noexcept {}
+  template <class U>
+  rt_aligned_allocator(const rt_aligned_allocator<U> &) noexcept {}
+
+  T *allocate(std::size_t n) {
+    std::size_t size = n * sizeof(T);
+#ifdef _WIN32
+    T *alloc = static_cast<T *>(_aligned_malloc(size, kOutputBufferAlignment));
+#else
+    // std::aligned_alloc requires `size` to be a multiple of `alignment`.
+    // Rounding `size` to the next multiple of `alignment` can theoretically
+    // overflow. This being allocator code, we try to be righteous.
+    // It helps that the size type here is unsigned, so overflow is well-defined
+    // as wrap-around.
+    std::size_t rounded_up_size =
+        (size + kOutputBufferAlignment - 1) & ~(kOutputBufferAlignment - 1);
+    if (rounded_up_size < size) {
+      // overflow!
+      return nullptr;
+    }
+    T *alloc = static_cast<T *>(
+        std::aligned_alloc(kOutputBufferAlignment, rounded_up_size));
+
+#endif
+    assert((reinterpret_cast<uintptr_t>(alloc) &
+            (kOutputBufferAlignment - 1)) == 0 &&
+           "unaligned allocation");
+    return alloc;
+  }
+  void deallocate(T *p, std::size_t n) {
+#ifdef _WIN32
+    _aligned_free(p);
+#else
+    std::free(p);
+#endif
+  }
+};
+
+template <class T, class U>
+bool operator==(const rt_aligned_allocator<T> &,
+                const rt_aligned_allocator<U> &) {
+  return true;
+}
+template <class T, class U>
+bool operator!=(const rt_aligned_allocator<T> &,
+                const rt_aligned_allocator<U> &) {
+  return false;
+}
+
+using rt_aligned_string =
+    std::basic_string<char, std::char_traits<char>, rt_aligned_allocator<char>>;
+
+// Adaptation of llvm::raw_string_ostream which operates on one of our
+// aligned strings.
+class rt_aligned_string_ostream : public llvm::raw_ostream {
+public:
+  explicit rt_aligned_string_ostream(rt_aligned_string &O) : OS(O) {
+    SetUnbuffered();
+  }
+
+  uint64_t current_pos() const override { return OS.size(); }
+
+private:
+  rt_aligned_string &OS;
+
+  /// See raw_ostream::write_impl.
+  void write_impl(const char *Ptr, size_t Size) override {
+    OS.append(Ptr, Size);
+  }
+};
+
+llvm::ThreadPoolStrategy getGlobalThreadPoolStrategy() {
+  // We allow environment variables to control the compiler thread pool.
+  //   IREE_COMPILER_TASK_COUNT: Specifies a target maximum number of
+  //     concurrent tasks to support at any given time. The actual number
+  //     of threads will be limited to the hardware concurrency if in
+  //     excess. If zero, then the hardware concurrency is used.
+  const char *envTaskCount = getenv("IREE_COMPILER_TASK_COUNT");
+
+  // As of 2023-11-11, the compiler was capable of exploiting ~12x parallelism
+  // on large workloads, and this does not cause much increased latency or
+  // memory usage on untuned build system jobs which are dispatching large
+  // numbers of compilation commands or single-kernel, complicated compilation.
+  // This test was done on a 32-core/64-thread ThreadRipper with 128GB of RAM.
+  unsigned taskCount = 12;
+
+  if (envTaskCount) {
+    StringRef srTaskCount(envTaskCount);
+    if (!srTaskCount.empty() && srTaskCount.getAsInteger(10, taskCount)) {
+      llvm::errs() << "IREE COMPILER: Ignoring malformed value for "
+                      "IREE_COMPILER_TASK_COUNT ('"
+                   << envTaskCount << "')\n";
+    }
+  }
+
+  llvm::ThreadPoolStrategy strategy;
+  strategy.ThreadsRequested = taskCount;
+  strategy.Limit = true;
+  return strategy;
+}
+
 struct Error {
   Error(std::string message) : message(std::move(message)) {}
   std::string message;
@@ -99,10 +209,13 @@ struct GlobalInit {
   GlobalInit();
   ~GlobalInit() { llvm::llvm_shutdown(); }
   void registerCommandLineOptions();
+  std::unique_ptr<MLIRContext> createContext();
+  void initializeContext(MLIRContext &context);
 
   // Reference count of balanced calls to ireeCompilerGlobalInitialize
   // and ireeCompilerGlobalShutdown. Upon reaching zero, must be deleted.
   std::atomic<int> refCount{1};
+  llvm::ThreadPool threadPool;
   llvm::BumpPtrAllocator alloc;
   mlir::DialectRegistry registry;
   PluginManager pluginManager;
@@ -130,7 +243,7 @@ struct GlobalInit {
   IREE::VM::BytecodeTargetOptions *clBytecodeTargetOptions = nullptr;
 };
 
-GlobalInit::GlobalInit() {
+GlobalInit::GlobalInit() : threadPool(getGlobalThreadPoolStrategy()) {
   // Global/static registrations.
   // Allegedly need to register passes to get good reproducers
   // TODO: Verify this (I think that this was fixed some time ago).
@@ -174,6 +287,22 @@ void GlobalInit::registerCommandLineOptions() {
   clBytecodeTargetOptions = &IREE::VM::BytecodeTargetOptions::FromFlags::get();
 
   pluginManager.initializeCLI();
+}
+
+std::unique_ptr<MLIRContext> GlobalInit::createContext() {
+  auto context =
+      std::make_unique<MLIRContext>(MLIRContext::Threading::DISABLED);
+  initializeContext(*context);
+  return context;
+}
+
+void GlobalInit::initializeContext(MLIRContext &context) {
+  if (!context.isMultithreadingEnabled()) {
+    // Configure out threading for the context. Note that an arbitrary context
+    // may already have threading enabled, so we conservatively do nothing
+    // in this case.
+    context.setThreadPool(threadPool);
+  }
 }
 
 struct Session {
@@ -262,7 +391,7 @@ struct Session {
 };
 
 Session::Session(GlobalInit &globalInit)
-    : globalInit(globalInit), ownedContext(std::make_unique<MLIRContext>()),
+    : globalInit(globalInit), ownedContext(globalInit.createContext()),
       context(*ownedContext), binder(OptionsBinder::local()),
       pluginSession(globalInit.pluginManager, binder, pluginManagerOptions) {
   context.allowUnregisteredDialects();
@@ -410,6 +539,9 @@ struct Output {
       stringOutputStream->flush();
       *data = static_cast<void *>(&outputString[0]);
       *size = outputString.size();
+      assert((reinterpret_cast<uintptr_t>(*data) &
+              (kOutputBufferAlignment - 1)) == 0 &&
+             "output buffer has unaligned storage");
       return nullptr;
     } else if (type == Type::File) {
 #if !IREE_COMPILER_USE_MMAP
@@ -469,8 +601,8 @@ private:
   std::optional<int> backingFileDescriptor;
 
   // Fields for Type::Memory.
-  std::string outputString;
-  std::optional<llvm::raw_string_ostream> stringOutputStream;
+  rt_aligned_string outputString;
+  std::optional<rt_aligned_string_ostream> stringOutputStream;
 };
 
 Output::~Output() {
@@ -516,6 +648,8 @@ Error *Output::openMembuffer() {
   // Fallback to an std::string based accumulator if no platform support
   // for memfiles.
   type = Type::Membuffer;
+  // Avoid some initial memcpys with a size appropriate for program output.
+  outputString.reserve(16384);
   stringOutputStream.emplace(outputString);
   outputStream = &(*stringOutputStream);
   return nullptr;
@@ -824,6 +958,8 @@ bool Invocation::runPipeline(enum iree_compiler_pipeline_t pipeline) {
   if (failed(passManager->run(parsedModule))) {
     return false;
   }
+  // Done with the pipeline, mark the start of a new 'frame'.
+  IREE_TRACE_FRAME_MARK();
   return true;
 }
 
@@ -930,7 +1066,7 @@ GlobalInit *globalInit = nullptr;
 bool isShutdown = false;
 
 void llvmVersionPrinter(llvm::raw_ostream &os) {
-  os << "IREE (https://openxla.github.io/iree):\n  ";
+  os << "IREE (https://iree.dev):\n  ";
   std::string version = mlir::iree_compiler::getIreeRevision();
   if (version.empty()) {
     version = "(unknown)";
@@ -1388,6 +1524,14 @@ void ireeCompilerRegisterDialects(MlirDialectRegistry registry) {
     llvm::errs() << "error: Failed to initialize IREE compiler plugins\n";
   }
   pluginSession.registerDialects(*cppRegistry);
+}
+
+void ireeCompilerInitializeContext(MlirContext context) {
+  if (!globalInit) {
+    llvm::errs() << "FATAL ERROR: Not initialized\n";
+    abort();
+  }
+  globalInit->initializeContext(*unwrap(context));
 }
 
 MlirContext ireeCompilerSessionBorrowContext(iree_compiler_session_t *session) {

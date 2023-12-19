@@ -9,11 +9,11 @@
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #define DEBUG_TYPE "iree-llvmcpu-utils"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 bool preferIntrinsicsOverAsm(IREE::HAL::ExecutableTargetAttr targetAttr) {
   auto intrinsicsAttr =
@@ -53,58 +53,4 @@ bool hasSMEFeature(IREE::HAL::ExecutableTargetAttr targetAttr) {
   return hasFeature(targetAttr, "+sme");
 }
 
-FailureOr<Operation *> getRootOperation(ArrayRef<Operation *> computeOps) {
-  Operation *rootOperation = nullptr;
-  for (auto op : llvm::reverse(computeOps)) {
-    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
-      // Do not treat linalg ops that are all parallel as root operations in
-      // this sweep.
-      if (linalgOp.getNumLoops() == linalgOp.getNumParallelLoops())
-        continue;
-
-      // All other linalg ops are root ops.
-      rootOperation = op;
-      break;
-    }
-
-    if (isa<TilingInterface>(op) &&
-        !isa<tensor::PadOp, tensor::PackOp, tensor::UnPackOp>(op)) {
-      // All other operations that implement this interface are root ops.
-      rootOperation = op;
-      break;
-    }
-  }
-
-  if (!rootOperation) {
-    // Check for elementwise operations.
-    for (auto op : llvm::reverse(computeOps)) {
-      if (isa<linalg::LinalgOp>(op)) {
-        rootOperation = op;
-        break;
-      }
-    }
-  }
-
-  if (!rootOperation) {
-    // Check for pad/pack/unpack ops by themselves.
-    for (auto op : llvm::reverse(computeOps)) {
-      if (isa<tensor::PadOp, tensor::PackOp, tensor::UnPackOp>(op)) {
-        rootOperation = op;
-        break;
-      }
-    }
-  }
-
-  return rootOperation;
-}
-
-bool hasByteAlignedElementTypes(linalg::LinalgOp linalgOp) {
-  return llvm::all_of(linalgOp->getOperands(), [](Value operand) {
-    auto bitwidth =
-        getElementTypeOrSelf(operand.getType()).getIntOrFloatBitWidth();
-    return bitwidth % 8 == 0;
-  });
-}
-
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

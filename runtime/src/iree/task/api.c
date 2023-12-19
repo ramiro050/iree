@@ -34,15 +34,15 @@ IREE_FLAG(
     "the stack for storage over ~16-32KB and instead use local workgroup\n"
     "memory.");
 
-// TODO(benvanik): enable this when we use it - though hopefully we don't!
 IREE_FLAG(
-    int32_t, task_worker_local_memory, 0,  // 64 * 1024,
-    "Specifies the bytes of per-worker local memory allocated for use by\n"
+    int32_t, task_worker_local_memory, 0,
+    "Overrides the bytes of per-worker local memory allocated for use by\n"
     "dispatched tiles. Tiles may use less than this but will fail to dispatch\n"
     "if they require more. Conceptually it is like a stack reservation and\n"
     "should be treated the same way: the source programs must be built to\n"
     "only use a specific maximum amount of local memory and the runtime must\n"
-    "be configured to make at least that amount of local memory available.");
+    "be configured to make at least that amount of local memory available.\n"
+    "By default the CPU L2 cache size is used if such queries are supported.");
 
 iree_status_t iree_task_executor_options_initialize_from_flags(
     iree_task_executor_options_t* out_options) {
@@ -98,10 +98,14 @@ IREE_FLAG(
     "'current' will inherit the node of the calling thread.");
 
 IREE_FLAG(
-    int32_t, task_topology_max_group_count, 8,
+    int32_t, task_topology_max_group_count, 64,
     "Sets a maximum value on the worker count that can be automatically\n"
     "detected and used when --task_topology_group_count=0 and is ignored\n"
     "otherwise.");
+
+IREE_FLAG(string, task_topology_performance_level, "any",
+          "Selects only cores that match the specified performance level from\n"
+          "[`any`, `low` (or `efficiency`), `high` (or `performance`)].");
 
 // Builds a bitmask of NUMA nodes that topologies should be created for.
 //
@@ -156,6 +160,25 @@ static iree_status_t iree_task_topologies_select_nodes_from_flags(
   return iree_ok_status();
 }
 
+static iree_status_t iree_task_topology_parse_performance_level(
+    const char* value, iree_task_topology_performance_level_t* out_level) {
+  *out_level = IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_ANY;
+  if (strcmp(value, "any") == 0) {
+    *out_level = IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_ANY;
+    return iree_ok_status();
+  } else if (strcmp(value, "low") == 0 || strcmp(value, "efficiency") == 0) {
+    *out_level = IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_LOW;
+    return iree_ok_status();
+  } else if (strcmp(value, "high") == 0 || strcmp(value, "performance") == 0) {
+    *out_level = IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_HIGH;
+    return iree_ok_status();
+  }
+  return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                          "unknown value `%s` for performance level; expected "
+                          "one of [any, low/efficiency, high/performance]",
+                          value);
+}
+
 iree_status_t iree_task_topology_initialize_from_flags(
     iree_task_topology_node_id_t node_id, iree_task_topology_t* out_topology) {
   IREE_ASSERT_ARGUMENT(out_topology);
@@ -168,8 +191,13 @@ iree_status_t iree_task_topology_initialize_from_flags(
     return iree_ok_status();
   } else if (strcmp(FLAG_task_topology_mode, "physical_cores") == 0) {
     // Physical cores sourced from a specific NUMA node.
+    iree_task_topology_performance_level_t performance_level =
+        IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_ANY;
+    IREE_RETURN_IF_ERROR(iree_task_topology_parse_performance_level(
+        FLAG_task_topology_performance_level, &performance_level));
     return iree_task_topology_initialize_from_physical_cores(
-        node_id, FLAG_task_topology_max_group_count, out_topology);
+        node_id, performance_level, FLAG_task_topology_max_group_count,
+        out_topology);
   } else {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -214,7 +242,11 @@ static void iree_task_flags_dump_task_topology(
       fprintf(stdout, "(unspecified)");
     }
     fprintf(stdout, "\n");
-    fprintf(stdout, "#  cache sharing: ");
+
+    fprintf(stdout, "#  caches: l1d=%u, l2d=%u\n", group->caches.l1_data,
+            group->caches.l2_data);
+
+    fprintf(stdout, "#  last level cache sharing: ");
     if (group->constructive_sharing_mask == 0) {
       fprintf(stdout, "(none)\n");
     } else if (group->constructive_sharing_mask ==
@@ -233,6 +265,7 @@ static void iree_task_flags_dump_task_topology(
       }
       fprintf(stdout, "\n");
     }
+
     fprintf(stdout, "#\n");
   }
 }

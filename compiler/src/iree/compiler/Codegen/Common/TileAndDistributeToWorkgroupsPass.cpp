@@ -16,8 +16,7 @@
 
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtOps.h"
-#include "iree-dialects/Dialect/LinalgExt/Passes/Transforms.h"
-#include "iree/compiler/Codegen/Common/EncodingInfo.h"
+#include "iree/compiler/Codegen/Common/EncodingUtils.h"
 #include "iree/compiler/Codegen/Common/PassDetail.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Common/Transforms.h"
@@ -44,8 +43,7 @@
 
 #define DEBUG_TYPE "iree-codegen-tile-and-distribute-to-workgroups"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Method to return the configuration to use for first-level tile and
 /// distribute. Returns the
@@ -120,26 +118,6 @@ getTileAndDistributeConfig(ArrayRef<Operation *> computeOps,
   return success();
 }
 
-/// Get the materialization information from a `tensor.pack` operation.
-static FailureOr<IREE::LinalgExt::MaterializeEncodingInfo>
-getMaterializationInfo(tensor::PackOp packOp) {
-  IREE::LinalgExt::MaterializeEncodingInfo encodingInfo;
-  SmallVector<OpFoldResult> mixedTileSizes = packOp.getMixedTiles();
-  encodingInfo.innerTileSizes.reserve(mixedTileSizes.size());
-  for (auto tileSize : mixedTileSizes) {
-    if (tileSize.is<Value>()) {
-      encodingInfo.innerTileSizes.push_back(ShapedType::kDynamic);
-    } else {
-      encodingInfo.innerTileSizes.push_back(
-          llvm::cast<IntegerAttr>(tileSize.get<Attribute>()).getInt());
-    }
-  }
-  encodingInfo.innerDimsPos = llvm::to_vector(packOp.getInnerDimsPos());
-  encodingInfo.outerDimsPerm = llvm::to_vector(packOp.getOuterDimsPerm());
-  encodingInfo.srcRank = packOp.getSourceRank();
-  return encodingInfo;
-}
-
 //===---------------------------------------------------------------------===//
 // Patterns to lower operations that are used to compute the number of
 // workgroups.
@@ -179,7 +157,7 @@ static LogicalResult lowerDispatchWorkgroupCountForDagRootOp(
 
         int64_t staticLoopRange = std::get<1>(p);
         OpFoldResult workload =
-            (staticLoopRange == ShapedType::kDynamic
+            (ShapedType::isDynamic(staticLoopRange)
                  ? OpFoldResult(std::get<0>(p))
                  : OpFoldResult(rewriter.getIndexAttr(staticLoopRange)));
         AffineExpr s0, s1;
@@ -317,6 +295,25 @@ void TileAndDistributeToWorkgroupsPass::runOnOperation() {
     auto exportOp = entryPoints.lookup(funcOp.getName());
     if (!exportOp)
       continue;
+
+    Block *body = exportOp.getWorkgroupCountBody();
+    if (!body) {
+      exportOp.emitOpError("unexpected empty workgroup count region");
+      return signalPassFailure();
+    }
+
+    // If the function has already lowered the workgroup count region, infer
+    // that tiling + distribution has already occurred.
+    WalkResult res = body->walk([&](Operation *op) {
+      if (isa<IREE::Flow::DispatchWorkgroupCountFromSliceOp,
+              IREE::Flow::DispatchWorkgroupCountFromDagRootOp>(op)) {
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (!res.wasInterrupted()) {
+      continue;
+    }
 
     SmallVector<Operation *> computeOps = getComputeOps(funcOp);
     SmallVector<int64_t> tileSizes, staticLoopRanges, interchange;
@@ -461,5 +458,4 @@ createTileAndDistributeToWorkgroupsPass(
       maxWorkgroupParallelDims, distributionMethod);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

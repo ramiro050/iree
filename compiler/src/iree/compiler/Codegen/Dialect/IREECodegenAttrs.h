@@ -17,13 +17,14 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 /// Typedef for tile sizes to use at different levels of tiling.
 using TileSizesListType = SmallVector<SmallVector<int64_t>>;
 using TileSizesListTypeRef = ArrayRef<SmallVector<int64_t>>;
-} // namespace iree_compiler
-} // namespace mlir
+/// Typedef for scalable tile flags at different levels of tiling.
+using ScalableTileFlagsListType = SmallVector<SmallVector<bool>>;
+using ScalableTileFlagsListTypeRef = ArrayRef<SmallVector<bool>>;
+} // namespace mlir::iree_compiler
 
 // clang-format off
 #include "iree/compiler/Codegen/Dialect/LoweringConfigEnums.h.inc"
@@ -31,8 +32,8 @@ using TileSizesListTypeRef = ArrayRef<SmallVector<int64_t>>;
 #include "iree/compiler/Codegen/Dialect/IREECodegenAttrs.h.inc"
 // clang-format on
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 //===----------------------------------------------------------------------===//
 // Helpers for getting/setting iree_codegen.translation_info attribute on the
 // `hal.executable.export`
@@ -52,6 +53,18 @@ getTranslationInfo(func::FuncOp funcOp) {
     return nullptr;
   return getTranslationInfo(*exportOp);
 }
+
+/// Returns the identical TranslationInfoAttr. Returns nullptr if entry point
+/// functions have different TranslationInfoAttr.
+/// There might be multiple entry points in the module. Currently, all of them
+/// need to have the same translation info.
+/// TODO(ravishankarm): This is strange that this is not enforced
+/// structurally, but something to address later on. The main issue is how
+/// to invoke separate dynamic pass pipelines on  entry point functions,
+/// when the passes might have module level changes. For now this
+/// restriction is fine.
+std::optional<IREE::Codegen::TranslationInfoAttr>
+getIdenticalTranslationInfo(IREE::HAL::ExecutableVariantOp variantOp);
 
 // TODO(ravishankarm, benvanik): Eventually all the information needed for the
 // lowering will be consolidated into a single attribute with richer
@@ -121,13 +134,15 @@ void setLoweringConfig(Operation *op, IREE::Codegen::LoweringConfigAttr config);
 /// translation.
 inline LogicalResult setOpConfigAndEntryPointFnTranslation(
     func::FuncOp entryPointFn, Operation *op, TileSizesListTypeRef tileSizes,
+    ScalableTileFlagsListTypeRef scalableTileFlags,
     IREE::Codegen::DispatchLoweringPassPipeline passPipeline,
     ArrayRef<int64_t> workgroupSize = {},
     std::optional<int64_t> subgroupSize = {},
     unsigned softwarePipelineDepth = 0,
     unsigned softwarePipelineStoreStage = 1) {
   MLIRContext *context = entryPointFn.getContext();
-  auto config = IREE::Codegen::LoweringConfigAttr::get(context, tileSizes);
+  auto config = IREE::Codegen::LoweringConfigAttr::get(context, tileSizes,
+                                                       scalableTileFlags);
   setLoweringConfig(op, config);
   if (failed(setDispatchConfig(entryPointFn, workgroupSize, subgroupSize)))
     return failure();
@@ -135,6 +150,20 @@ inline LogicalResult setOpConfigAndEntryPointFnTranslation(
       entryPointFn.getContext(), passPipeline, softwarePipelineDepth,
       softwarePipelineStoreStage);
   return setTranslationInfo(entryPointFn, translationInfo);
+}
+
+/// Overload of setOpConfigAndEntryPointFnTranslation() for the "no scalable
+/// flags" case.
+inline LogicalResult setOpConfigAndEntryPointFnTranslation(
+    func::FuncOp entryPointFn, Operation *op, TileSizesListTypeRef tileSizes,
+    IREE::Codegen::DispatchLoweringPassPipeline passPipeline,
+    ArrayRef<int64_t> workgroupSize = {},
+    std::optional<int64_t> subgroupSize = {},
+    unsigned softwarePipelineDepth = 0,
+    unsigned softwarePipelineStoreStage = 1) {
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, op, tileSizes, {}, passPipeline, workgroupSize,
+      subgroupSize, softwarePipelineDepth, softwarePipelineStoreStage);
 }
 
 //===----------------------------------------------------------------------===//
@@ -156,7 +185,6 @@ void setCompilationInfo(Operation *op,
 /// operation.
 void eraseCompilationInfo(Operation *op);
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_DIALECT_LOWERINGCONFIG_H_

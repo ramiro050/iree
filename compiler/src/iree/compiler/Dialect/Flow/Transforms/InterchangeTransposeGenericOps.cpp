@@ -17,10 +17,7 @@
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Flow {
+namespace mlir::iree_compiler::IREE::Flow {
 
 namespace {
 
@@ -64,7 +61,7 @@ struct TransposeGenericOpPattern : public OpRewritePattern<linalg::GenericOp> {
     // Make the input indexing maps identity by interchanging.
     auto interchange =
         llvm::map_to_vector(mapForInterchange->getResults(), [](AffineExpr e) {
-          return e.cast<AffineDimExpr>().getPosition();
+          return cast<AffineDimExpr>(e).getPosition();
         });
 
     return interchangeGenericOp(rewriter, genericOp, interchange);
@@ -94,7 +91,4 @@ std::unique_ptr<Pass> createInterchangeTransposeGenericOpsPass() {
   return std::make_unique<InterchangeTransposeGenericOpsPass>();
 }
 
-} // namespace Flow
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Flow

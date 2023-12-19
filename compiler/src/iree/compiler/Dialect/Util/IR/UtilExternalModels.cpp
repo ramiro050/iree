@@ -14,10 +14,7 @@
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Util {
+namespace mlir::iree_compiler::IREE::Util {
 
 namespace {
 
@@ -168,14 +165,9 @@ void registerUtilExternalModels(DialectRegistry &registry) {
         LinalgOpTiedOpInterface<LinalgExt::WinogradInputTransformOp>>(*ctx);
     LinalgExt::WinogradOutputTransformOp::attachInterface<
         LinalgOpTiedOpInterface<LinalgExt::WinogradOutputTransformOp>>(*ctx);
-    LinalgExt::SoftmaxOp::attachInterface<
-        LinalgOpTiedOpInterface<LinalgExt::SoftmaxOp>>(*ctx);
     LinalgExt::AttentionOp::attachInterface<
         LinalgOpTiedOpInterface<LinalgExt::AttentionOp>>(*ctx);
   });
 }
 
-} // namespace Util
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Util

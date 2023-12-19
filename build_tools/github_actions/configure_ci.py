@@ -49,6 +49,11 @@ from typing import Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 import yaml
 
+# Add build_tools python dir to the search path.
+sys.path.insert(0, str(pathlib.Path(__file__).parent.with_name("python")))
+
+from benchmark_suites.iree import benchmark_presets
+
 
 # We don't get StrEnum till Python 3.11
 @enum.unique
@@ -96,7 +101,8 @@ SKIP_PATH_PATTERNS = [
     ".github/ISSUE_TEMPLATE/*",
     "*.cff",
     "*.clang-format",
-    "*.git-ignore",
+    "*.gitignore",
+    "*.git-blame-ignore-revs",
     "*.md",
     "*.natvis",
     "*.pylintrc",
@@ -118,6 +124,7 @@ CONTROL_JOBS = frozenset(["setup", "summary"])
 # They may also run on presubmit only under certain conditions.
 DEFAULT_POSTSUBMIT_ONLY_JOBS = frozenset(
     [
+        "build_test_all_arm64",
         "build_test_all_windows",
         "build_test_all_macos_arm64",
         "build_test_all_macos_x86_64",
@@ -134,18 +141,19 @@ PRESUBMIT_TOUCH_ONLY_JOBS = [
     ("build_test_all_windows", ["*win32*", "*windows*", "*msvc*"]),
 ]
 
+# Default presets enabled in CI.
 DEFAULT_BENCHMARK_PRESET_GROUP = [
-    "cuda",
-    "x86_64",
-    "android-cpu",
-    "android-gpu",
-    "vulkan-nvidia",
-    "comp-stats",
-]
+    preset
+    for preset in benchmark_presets.DEFAULT_PRESETS
+    # RISC-V benchmarks haven't been supported in CI workflow.
+    if preset not in [benchmark_presets.RISCV]
+] + ["comp-stats"]
 DEFAULT_BENCHMARK_PRESET = "default"
-LARGE_BENCHMARK_PRESET_GROUP = ["cuda-large", "x86_64-large"]
+LARGE_BENCHMARK_PRESET_GROUP = benchmark_presets.LARGE_PRESETS
 # All available benchmark preset options including experimental presets.
-BENCHMARK_PRESET_OPTIONS = DEFAULT_BENCHMARK_PRESET_GROUP + LARGE_BENCHMARK_PRESET_GROUP
+BENCHMARK_PRESET_OPTIONS = (
+    benchmark_presets.ALL_EXECUTION_PRESETS + benchmark_presets.ALL_COMPILATION_PRESETS
+)
 BENCHMARK_LABEL_PREFIX = "benchmarks"
 
 PR_DESCRIPTION_TEMPLATE = string.Template("${title}\n\n${body}")
@@ -155,8 +163,10 @@ PR_DESCRIPTION_TEMPLATE = string.Template("${title}\n\n${body}")
 # intended to be merged and should exclude test/draft PRs as well as
 # PRs that include temporary patches to the submodule during review.
 # See also: https://github.com/openxla/iree/issues/12268
-LLVM_INTEGRATE_TITLE_PATTERN = re.compile("^integrate.+llvm-project", re.IGNORECASE)
-LLVM_INTEGRATE_BRANCH_PATTERN = re.compile("bump-llvm|llvm-bump", re.IGNORECASE)
+LLVM_INTEGRATE_TITLE_PATTERN = re.compile("^integrate.+llvm", re.IGNORECASE)
+LLVM_INTEGRATE_BRANCH_PATTERN = re.compile(
+    "bump-llvm|llvm-bump|integrate-llvm", re.IGNORECASE
+)
 LLVM_INTEGRATE_LABEL = "llvm-integrate"
 
 
@@ -358,9 +368,9 @@ def parse_jobs_trailer(
     jobs = set(jobs)
     unknown_jobs = jobs - all_jobs
     if unknown_jobs:
-        raise ValueError(
-            f"Received unknown jobs '{','.join(unknown_jobs)}' in trailer '{key}'"
-        )
+        # Unknown jobs may be for a different workflow. Warn then continue.
+        print(f"::warning::Unknown jobs '{','.join(unknown_jobs)}' in trailer '{key}'")
+        jobs = jobs - unknown_jobs
     return jobs
 
 

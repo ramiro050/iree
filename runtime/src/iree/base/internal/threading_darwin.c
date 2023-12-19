@@ -36,8 +36,23 @@ struct iree_thread_t {
   iree_atomic_int32_t is_suspended;
 };
 
+// Maps an IREE iree_thread_priority_class_t value to a QoS type.
+// https://developer.apple.com/library/archive/documentation/Performance/Conceptual/EnergyGuide-iOS/PrioritizeWorkWithQoS.html
 static qos_class_t iree_thread_qos_class_for_priority_class(
-    iree_thread_priority_class_t priority_class);
+    iree_thread_priority_class_t priority_class) {
+  switch (priority_class) {
+    case IREE_THREAD_PRIORITY_CLASS_LOWEST:
+      return QOS_CLASS_BACKGROUND;
+    case IREE_THREAD_PRIORITY_CLASS_LOW:
+      return QOS_CLASS_UTILITY;
+    default:
+    case IREE_THREAD_PRIORITY_CLASS_NORMAL:
+    case IREE_THREAD_PRIORITY_CLASS_HIGH:
+      return QOS_CLASS_USER_INITIATED;
+    case IREE_THREAD_PRIORITY_CLASS_HIGHEST:
+      return QOS_CLASS_USER_INTERACTIVE;
+  }
+}
 
 static void iree_thread_set_name(const char* name) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -105,8 +120,12 @@ iree_status_t iree_thread_create(iree_thread_entry_t entry, void* entry_arg,
   }
 
   // Ensure we start with the right QoS class.
-  qos_class_t qos_class =
-      iree_thread_qos_class_for_priority_class(params.priority_class);
+  qos_class_t qos_class;
+  if (params.initial_affinity.specified && params.initial_affinity.smt) {
+    qos_class = QOS_CLASS_BACKGROUND;
+  } else {
+    qos_class = iree_thread_qos_class_for_priority_class(params.priority_class);
+  }
   pthread_attr_set_qos_class_np(&thread_attr, qos_class, 0);
 
   // Retain the thread for the thread itself; this way if the caller immediately
@@ -173,25 +192,6 @@ uintptr_t iree_thread_id(iree_thread_t* thread) {
   return (uintptr_t)thread->handle;
 }
 
-// Maps an IREE iree_thread_priority_class_t value to a QoS type.
-// https://developer.apple.com/library/archive/documentation/Performance/Conceptual/EnergyGuide-iOS/PrioritizeWorkWithQoS.html
-static qos_class_t iree_thread_qos_class_for_priority_class(
-    iree_thread_priority_class_t priority_class) {
-  switch (priority_class) {
-    case IREE_THREAD_PRIORITY_CLASS_LOWEST:
-      return QOS_CLASS_BACKGROUND;
-    case IREE_THREAD_PRIORITY_CLASS_LOW:
-      return QOS_CLASS_UTILITY;
-    default:
-    case IREE_THREAD_PRIORITY_CLASS_NORMAL:
-      return QOS_CLASS_DEFAULT;
-    case IREE_THREAD_PRIORITY_CLASS_HIGH:
-      return QOS_CLASS_USER_INITIATED;
-    case IREE_THREAD_PRIORITY_CLASS_HIGHEST:
-      return QOS_CLASS_USER_INTERACTIVE;
-  }
-}
-
 iree_thread_override_t* iree_thread_priority_class_override_begin(
     iree_thread_t* thread, iree_thread_priority_class_t priority_class) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -222,12 +222,17 @@ void iree_thread_request_affinity(iree_thread_t* thread,
   if (!affinity.specified) return;
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  // Use mach_task_self when the caller requesting the affinity change is the
+  // thread being changed.
+  mach_port_t thread_port =
+      thread->handle == pthread_self() ? mach_task_self() : thread->mach_port;
+
   // See:
   // https://gist.github.com/Coneko/4234842
   // https://fergofrog.com/code/cbowser/xnu/osfmk/mach/thread_policy.h.html
   // http://www.hybridkernel.com/2015/01/18/binding_threads_to_cores_osx.html
   thread_affinity_policy_data_t policy_data = {affinity.id};
-  thread_policy_set(thread->mach_port, THREAD_AFFINITY_POLICY,
+  thread_policy_set(thread_port, THREAD_AFFINITY_POLICY,
                     (thread_policy_t)(&policy_data),
                     THREAD_AFFINITY_POLICY_COUNT);
 

@@ -8,7 +8,6 @@
 
 #include "iree/compiler/Dialect/Stream/IR/StreamDialect.h"
 #include "iree/compiler/Dialect/Stream/IR/StreamOps.h"
-#include "iree/compiler/Dialect/Stream/Transforms/PassDetail.h"
 #include "iree/compiler/Dialect/Stream/Transforms/Passes.h"
 #include "iree/compiler/Dialect/Util/Analysis/DFX/Element.h"
 #include "iree/compiler/Dialect/Util/Analysis/DFX/Solver.h"
@@ -29,10 +28,11 @@
 
 #define DEBUG_TYPE "iree-stream-elide-async-copies"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Stream {
+namespace mlir::iree_compiler::IREE::Stream {
+
+#define GEN_PASS_DEF_ELIDEASYNCCOPIESPASS
+#include "iree/compiler/Dialect/Stream/Transforms/Passes.h.inc"
+
 namespace {
 
 //===----------------------------------------------------------------------===//
@@ -261,10 +261,11 @@ private:
       // Branch argument.
       traversalResult |= solver.getExplorer().walkIncomingBranchOperands(
           arg.getParentBlock(),
-          [&](Block *sourceBlock, OperandRange operands) -> WalkResult {
+          [&](Block *sourceBlock, OperandRange operands,
+              size_t offset) -> WalkResult {
             unsigned baseIdx = operands.getBeginOperandIndex();
             auto &sourceOperand = sourceBlock->getTerminator()->getOpOperand(
-                baseIdx + arg.getArgNumber());
+                baseIdx + arg.getArgNumber() + offset);
             updateFromPredecessorUse(sourceOperand, solver);
             return WalkResult::advance();
           });
@@ -431,17 +432,6 @@ static bool isSafeToElideCloneOp(IREE::Stream::AsyncCloneOp cloneOp,
   return false;
 }
 
-// Tries to elide |cloneOp| by replacing all uses with its source if safe.
-// Returns true if the op was elided.
-static bool tryElideCloneOp(IREE::Stream::AsyncCloneOp cloneOp,
-                            LastUseAnalysis &analysis) {
-  if (!isSafeToElideCloneOp(cloneOp, analysis))
-    return false;
-  cloneOp.replaceAllUsesWith(cloneOp.getSource());
-  cloneOp.erase();
-  return true;
-}
-
 // Tries to elide copies nested within |region| when safe.
 // Returns true if any ops were elided.
 static bool tryElideAsyncCopiesInRegion(Region &region,
@@ -461,7 +451,7 @@ static bool tryElideAsyncCopiesInRegion(Region &region,
 }
 
 //===----------------------------------------------------------------------===//
-// -iree-stream-elide-async-copies
+// --iree-stream-elide-async-copies
 //===----------------------------------------------------------------------===//
 
 // Elides async copies that perform no meaningful work - such as clones of the
@@ -479,15 +469,9 @@ static bool tryElideAsyncCopiesInRegion(Region &region,
 // rerouted to the cloned source value. This process repeats until no more
 // copies are elided: we are guaranteed to reach a fixed point as we are only
 // removing copies in this pass and not introducing any new ops.
-class ElideAsyncCopiesPass : public ElideAsyncCopiesBase<ElideAsyncCopiesPass> {
-public:
-  ElideAsyncCopiesPass() = default;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<IREE::Stream::StreamDialect>();
-    registry.insert<IREE::Util::UtilDialect>();
-  }
-
+struct ElideAsyncCopiesPass
+    : public IREE::Stream::impl::ElideAsyncCopiesPassBase<
+          ElideAsyncCopiesPass> {
   void runOnOperation() override {
     auto moduleOp = getOperation();
     if (moduleOp.getBody()->empty())
@@ -534,11 +518,4 @@ public:
 
 } // namespace
 
-std::unique_ptr<OperationPass<mlir::ModuleOp>> createElideAsyncCopiesPass() {
-  return std::make_unique<ElideAsyncCopiesPass>();
-}
-
-} // namespace Stream
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Stream

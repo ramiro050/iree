@@ -17,26 +17,29 @@ iree_cc_library(
     "Passes.h"
   SRCS
     "AssignTargetDevices.cpp"
-    "BenchmarkBatchDispatches.cpp"
+    "ConfigureExecutables.cpp"
     "ConvertToHAL.cpp"
     "DumpExecutableBenchmarks.cpp"
     "DumpExecutableSources.cpp"
     "ElideRedundantCommands.cpp"
     "FixupLegacySync.cpp"
-    "InlineDeviceSwitches.cpp"
     "LinkExecutables.cpp"
     "MaterializeDispatchInstrumentation.cpp"
     "MaterializeInterfaces.cpp"
     "MaterializeResourceCaches.cpp"
     "MemoizeDeviceQueries.cpp"
     "Passes.cpp"
+    "Passes.h.inc"
     "PreprocessExecutables.cpp"
+    "RepeatDispatches.cpp"
     "ResolveExportOrdinals.cpp"
     "SerializeExecutables.cpp"
+    "StripExecutableContents.cpp"
     "SubstituteExecutables.cpp"
     "TranslateExecutables.cpp"
     "VerifyTargetEnvironment.cpp"
   DEPS
+    ::PassesIncGen
     LLVMSupport
     MLIRAffineToStandard
     MLIRArithDialect
@@ -63,16 +66,25 @@ iree_cc_library(
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::HAL::IR::HALDialect
     iree::compiler::Dialect::HAL::Target
-    iree::compiler::Dialect::HAL::Utils
     iree::compiler::Dialect::Stream::IR
     iree::compiler::Dialect::Stream::Transforms
     iree::compiler::Dialect::Util::Conversion
     iree::compiler::Dialect::Util::IR
     iree::compiler::Dialect::Util::Transforms
+    iree::compiler::Modules::IO::Parameters::IR::IOParametersDialect
     iree::compiler::Utils
     iree::schemas::instruments
     iree::schemas::instruments::dispatch_def_c_fbs
   PUBLIC
+)
+
+iree_tablegen_library(
+  NAME
+    PassesIncGen
+  TD_FILE
+    "Passes.td"
+  OUTS
+    --gen-pass-decls Passes.h.inc
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

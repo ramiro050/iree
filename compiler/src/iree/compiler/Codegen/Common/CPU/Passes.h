@@ -16,8 +16,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Convert encoding-specific operations based on target attributes. Examples:
 ///   linalg_ext.set_encoding   -> tensor.pack
@@ -45,9 +44,16 @@ std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
 createCPUMaterializeUpperBoundTileSizePass(
     ArrayRef<IREE::HAL::ExecutableTargetAttr> targetAttrs = {});
 
+/// Adds CPU bufferization passes to the pipeline.
+void addCPUBufferizePasses(OpPassManager &passManager);
+
+/// Pass to lower a sequence of operations to a iree_codegen.ukernel.*
+/// operation.
+std::unique_ptr<OperationPass<>>
+createCPULowerToUKernelsPass(bool skipIntermediateRoundings = true);
+
 void registerCodegenCommonCPUPasses();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_COMMON_CPU_PASSES_H_

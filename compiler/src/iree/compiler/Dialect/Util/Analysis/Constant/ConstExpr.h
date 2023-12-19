@@ -17,10 +17,7 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Util {
+namespace mlir::iree_compiler::IREE::Util {
 
 // Analyzes an entire module to determine all operations/values that are
 // purely derived from constants or immutable data and builds a
@@ -219,7 +216,7 @@ public:
 
   const ConstExprAnalysis &getAnalysis() const { return analysis; }
 
-  ConstExprHoistingPolicy(const ConstExprAnalysis &analysis);
+  ConstExprHoistingPolicy(const ConstExprAnalysis &analysis, int64_t threshold);
   void initialize();
   Decision *getDecision(const ConstExprAnalysis::ConstValueInfo *info) {
     return &decisions[info];
@@ -244,6 +241,8 @@ private:
 
   const ConstExprAnalysis &analysis;
 
+  int64_t constExprMaxSizeIncreaseThreshold;
+
   // Map of ConstValueInfo * to decision structs. All are allocated at
   // initialization and then the structure is not changed.
   llvm::DenseMap<const ConstExprAnalysis::ConstValueInfo *, Decision> decisions;
@@ -255,10 +254,7 @@ inline raw_ostream &operator<<(raw_ostream &os,
   return os;
 }
 
-} // namespace Util
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Util
 
 namespace llvm {
 template <>

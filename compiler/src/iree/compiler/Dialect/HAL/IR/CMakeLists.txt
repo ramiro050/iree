@@ -16,7 +16,6 @@ iree_cc_library(
   HDRS
     "HALDialect.h"
     "HALOps.h"
-    "HALTraits.h"
     "HALTypes.h"
   TEXTUAL_HDRS
     "HALAttrInterfaces.cpp.inc"
@@ -47,6 +46,7 @@ iree_cc_library(
     MLIRIR
     MLIRMemRefDialect
     MLIRParser
+    MLIRSCFDialect
     MLIRSideEffectInterfaces
     MLIRSupport
     MLIRTransformUtils
@@ -73,6 +73,7 @@ iree_cc_library(
     MLIRIR
     MLIRMemRefDialect
     MLIRParser
+    MLIRSCFDialect
     MLIRTransformUtils
     iree::compiler::Dialect::HAL::Conversion::HALToVM
     iree::compiler::Dialect::HAL::hal_imports

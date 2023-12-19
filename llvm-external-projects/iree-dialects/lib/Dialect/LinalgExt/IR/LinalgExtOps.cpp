@@ -114,8 +114,8 @@ static bool isSmallerThan(ArrayRef<int64_t> sourceShape,
       llvm::zip(sourceShape, limitShape), [](std::tuple<int64_t, int64_t> it) {
         int64_t sourceExtent = std::get<0>(it);
         int64_t limit = std::get<1>(it);
-        return sourceExtent == ShapedType::kDynamic ||
-               limit == ShapedType::kDynamic || sourceExtent <= limit;
+        return ShapedType::isDynamic(sourceExtent) ||
+               ShapedType::isDynamic(limit) || sourceExtent <= limit;
       });
 }
 
@@ -142,7 +142,7 @@ LogicalResult ScatterOp::verify() {
         "expected indices to be of rank 2 of i32 element type");
   }
   auto indexDepth = getIndexDepth();
-  if (indexDepth == ShapedType::kDynamic) {
+  if (ShapedType::isDynamic(indexDepth)) {
     return op->emitOpError("expected index depth is static");
   }
 
@@ -612,7 +612,7 @@ LogicalResult FftOp::verify() {
   // After tiling, it could be dynamic shape. (Because
   // subview/subtensor does not inference the type correctly
   // on (1 << x)) cases).
-  if (length == ShapedType::kDynamic)
+  if (ShapedType::isDynamic(length))
     return success();
   if (length & (length - 1)) {
     return op->emitOpError("only powers of 2 are handled currently");
@@ -649,7 +649,7 @@ SmallVector<Range> FftOp::getIterationDomain(OpBuilder &builder) {
   Value one = builder.create<arith::ConstantIndexOp>(loc, 1);
   for (auto en : llvm::enumerate(getOperandShape().drop_back())) {
     Value size;
-    if (en.value() == ShapedType::kDynamic) {
+    if (ShapedType::isDynamic(en.value())) {
       size = getDimValue(builder, loc, getReal(), en.index());
     } else {
       size = builder.create<arith::ConstantIndexOp>(loc, en.value());
@@ -886,8 +886,8 @@ LogicalResult ScanOp::verify() {
   }
   if (llvm::any_of(llvm::zip(expectedAccumulatorShape, accumulatorShape),
                    [](std::tuple<int64_t, int64_t> s) {
-                     return std::get<0>(s) != ShapedType::kDynamic &&
-                            std::get<1>(s) != ShapedType::kDynamic &&
+                     return !ShapedType::isDynamic(std::get<0>(s)) &&
+                            !ShapedType::isDynamic(std::get<1>(s)) &&
                             std::get<0>(s) != std::get<1>(s);
                    })) {
     return op->emitOpError("incompatible input/accumulator shapes");
@@ -901,8 +901,8 @@ LogicalResult ScanOp::verify() {
   }
   if (llvm::any_of(llvm::zip(inputShapes, outputShapes),
                    [](std::tuple<int64_t, int64_t> s) {
-                     return std::get<0>(s) != ShapedType::kDynamic &&
-                            std::get<1>(s) != ShapedType::kDynamic &&
+                     return !ShapedType::isDynamic(std::get<0>(s)) &&
+                            !ShapedType::isDynamic(std::get<1>(s)) &&
                             std::get<0>(s) != std::get<1>(s);
                    })) {
     return op->emitOpError("incompatible input/output shapes");
@@ -1108,8 +1108,8 @@ LogicalResult ReverseOp::verify() {
   }
   if (llvm::any_of(llvm::zip(inputShapes, outputShapes),
                    [](std::tuple<int64_t, int64_t> s) {
-                     return std::get<0>(s) != ShapedType::kDynamic &&
-                            std::get<1>(s) != ShapedType::kDynamic &&
+                     return !ShapedType::isDynamic(std::get<0>(s)) &&
+                            !ShapedType::isDynamic(std::get<1>(s)) &&
                             std::get<0>(s) != std::get<1>(s);
                    })) {
     return op->emitOpError("incompatible input/output shapes");
@@ -1509,7 +1509,7 @@ areNotFullTiles(ArrayRef<int64_t> inputShape,
                 DenseMap<int64_t, OpFoldResult> const &dimAndTileMapping) {
   int64_t rank = inputShape.size();
   for (int64_t dim = 0; dim < rank; dim++) {
-    if (inputShape[dim] == ShapedType::kDynamic)
+    if (ShapedType::isDynamic(inputShape[dim]))
       continue;
     auto it = dimAndTileMapping.find(dim);
     if (it != dimAndTileMapping.end()) {
@@ -1656,9 +1656,9 @@ static LogicalResult commonVerifierPackAndUnPackOp(OpTy packOrUnPack) {
             if (!constTileSize) {
               // If specified tile size is dynamic, output shape should
               // be dynamic too.
-              return shape == ShapedType::kDynamic;
+              return ShapedType::isDynamic(shape);
             } else {
-              if (shape == ShapedType::kDynamic) {
+              if (ShapedType::isDynamic(shape)) {
                 // For the shape being dynamic when tile size is
                 // specified, return true. In canonical form a constant
                 // tile size should lead to constant shape of the tiled
@@ -2095,15 +2095,25 @@ LogicalResult WinogradInputTransformOp::verify() {
   }
   auto inputType = input().getType().cast<ShapedType>();
   auto outputType = output().getType().cast<ShapedType>();
-  ArrayRef<int64_t> inputShape = inputType.getShape();
-  if (inputShape.size() != 4) {
-    return op->emitOpError("expected input operand to have rank 4");
-  }
-  ArrayRef<int64_t> outputShape = outputType.getShape();
   if (outputType.getElementType() != inputType.getElementType()) {
     return op->emitOpError(
         "expected input/output element types to be identical");
   }
+  unsigned inputRank = inputType.getRank();
+  unsigned outputRank = outputType.getRank();
+
+  if (inputRank != 2 && inputRank != 4) {
+    return op->emitOpError("expected input operand to have rank either 2 or 4");
+  }
+
+  if (inputRank == 2) {
+    if (outputRank != 2) {
+      return op->emitOpError(
+          "expected output operand to have rank 2 if input is of rank 2");
+    }
+    return success();
+  }
+
   if (getOutputOperandRank() != getInputOperandRank() + 2) {
     return op->emitOpError(
         "expected output rank to be equal to input rank + 2");
@@ -2125,6 +2135,7 @@ LogicalResult WinogradInputTransformOp::verify() {
   SmallVector<int64_t> expectedOutputShape(getOutputOperandRank(),
                                            inputTileSize);
   int outputIndex;
+  ArrayRef<int64_t> inputShape = inputType.getShape();
   for (int i = 0; i < inputShape.size(); i++) {
     outputIndex = i + numImageDims;
     if (ShapedType::isDynamic(inputShape[i])) {
@@ -2141,6 +2152,7 @@ LogicalResult WinogradInputTransformOp::verify() {
   if (isNchw()) {
     permute<Permutation::TTNCHW_TO_TTNHWC>(expectedOutputShape);
   }
+  ArrayRef<int64_t> outputShape = outputType.getShape();
   if (failed(verifyCompatibleShape(expectedOutputShape, outputShape))) {
     return op->emitOpError("incompatible output shape");
   }
@@ -2265,16 +2277,26 @@ LogicalResult WinogradOutputTransformOp::verify() {
   }
   auto inputType = input().getType().cast<ShapedType>();
   auto outputType = output().getType().cast<ShapedType>();
-  SmallVector<int64_t> inputShape(inputType.getShape());
-  if (inputShape.size() != 6) {
-    return op->emitOpError("expected input operand to have rank 6");
+  unsigned inputRank = inputType.getRank();
+  unsigned outputRank = outputType.getRank();
+
+  if (inputRank != 2 && inputRank != 6) {
+    return op->emitOpError("expected input operand to have rank either 2 or 6");
+  }
+
+  if (inputRank == 2) {
+    if (outputRank != 2) {
+      return op->emitOpError(
+          "expected output operand to have rank 2 if input is of rank 2");
+    }
+    return success();
   }
   ArrayRef<int64_t> outputShape = outputType.getShape();
   if (outputType.getElementType() != inputType.getElementType()) {
     return op->emitOpError(
         "expected input/output element types to be identical");
   }
-  if (getOutputOperandRank() != getInputOperandRank() - 2) {
+  if (outputRank != inputRank - 2) {
     return op->emitOpError(
         "expected output rank to be equal to input rank - 2");
   }
@@ -2289,6 +2311,7 @@ LogicalResult WinogradOutputTransformOp::verify() {
     return op->emitOpError(
         "expect image dimensions to be either [1, 2] or [2, 3]");
   }
+  SmallVector<int64_t> inputShape(inputType.getShape());
   if (isNchw()) {
     permute<Permutation::TTNHWC_TO_TTNCHW>(inputShape);
   }
@@ -2414,110 +2437,46 @@ LogicalResult WinogradOutputTransformOp::reifyResultShapes(
 }
 
 //===----------------------------------------------------------------------===//
-// SoftmaxOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult SoftmaxOp::verify() {
-  Operation *op = getOperation();
-  auto inputType = input().getType().cast<ShapedType>();
-  auto outputType = output().getType().cast<ShapedType>();
-  ArrayRef<int64_t> inputShape = inputType.getShape();
-  ArrayRef<int64_t> outputShape = outputType.getShape();
-  if (failed(verifyCompatibleShape(inputShape, outputShape))) {
-    return op->emitOpError("incompatible output shape");
-  }
-  int64_t inputRank = getInputOperandRank();
-  int64_t dimension = getDimension();
-  if ((dimension < 0) || (dimension >= inputRank)) {
-    return op->emitOpError("incorrect dimension specified");
-  }
-  return success();
-}
-
-SmallVector<Range> SoftmaxOp::getIterationDomain(OpBuilder &builder) {
-  int64_t operandRank = getInputOperandRank();
-  SmallVector<Range> loopBounds(operandRank);
-  Location loc = getLoc();
-  Value zero = builder.create<arith::ConstantIndexOp>(loc, 0);
-  Value one = builder.create<arith::ConstantIndexOp>(loc, 1);
-  Value source = input();
-  for (auto dim : llvm::seq<int64_t>(0, operandRank)) {
-    loopBounds[dim].offset = zero;
-    loopBounds[dim].size = getDimValue(builder, loc, source, dim);
-    loopBounds[dim].stride = one;
-  }
-  return loopBounds;
-}
-
-SmallVector<utils::IteratorType> SoftmaxOp::getLoopIteratorTypes() {
-  SmallVector<utils::IteratorType> iteratorTypes(getInputOperandRank(),
-                                                 utils::IteratorType::parallel);
-  iteratorTypes[getDimension()] = utils::IteratorType::reduction;
-  return iteratorTypes;
-}
-
-FailureOr<TilingResult>
-SoftmaxOp::getTiledImplementation(OpBuilder &builder,
-                                  ArrayRef<OpFoldResult> offsets,
-                                  ArrayRef<OpFoldResult> sizes) {
-  int64_t rank = getInputOperandRank();
-  auto oneAttr = builder.getI64IntegerAttr(1);
-  SmallVector<OpFoldResult> strides(rank, oneAttr);
-  SmallVector<Value> tiledOperands;
-  tiledOperands.emplace_back(
-      getSlice(builder, getLoc(), input(), offsets, sizes, strides));
-  tiledOperands.emplace_back(
-      getSlice(builder, getLoc(), getOutputs()[0], offsets, sizes, strides));
-
-  SmallVector<Type, 4> resultTypes;
-  if (hasTensorSemantics()) {
-    resultTypes.push_back(tiledOperands[1].getType());
-  }
-  Operation *tiledOp =
-      mlir::clone(builder, getOperation(), resultTypes, tiledOperands);
-
-  return TilingResult{{tiledOp}, SmallVector<Value>(tiledOp->getResults())};
-}
-
-LogicalResult SoftmaxOp::getResultTilePosition(
-    OpBuilder &builder, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<OpFoldResult> sizes, SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  if (resultNumber == 0) {
-    resultOffsets.assign(offsets.begin(), offsets.end());
-    resultSizes.assign(sizes.begin(), sizes.end());
-    return success();
-  }
-  return failure();
-}
-
-LogicalResult SoftmaxOp::fold(FoldAdaptor, SmallVectorImpl<OpFoldResult> &) {
-  return memref::foldMemRefCast(*this);
-}
-
-LogicalResult
-SoftmaxOp::reifyResultShapes(OpBuilder &b,
-                             ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
-  return cast<LinalgExtOp>(getOperation())
-      .reifyResultShapes(b, reifiedReturnShapes);
-}
-
-void SoftmaxOp::build(OpBuilder &builder, OperationState &state, Value source,
-                      Value output, int64_t dimension) {
-  build(builder, state, TypeRange({output.getType()}), ValueRange(source),
-        ValueRange(output), dimension);
-}
-
-//===----------------------------------------------------------------------===//
 // AttentionOp
 //===----------------------------------------------------------------------===//
 
+/// Utility function to check whether a given ShapedType has the expected rank.
+static LogicalResult checkShapeRank(Operation *op, StringRef operandName,
+                                    ShapedType shapedType,
+                                    unsigned rankToCompareWith) {
+  unsigned opRank = shapedType.getRank();
+  if (opRank != rankToCompareWith)
+    return op->emitOpError("expected ")
+           << operandName << " to have rank " << rankToCompareWith
+           << " but found " << opRank;
+  return success();
+}
+
 LogicalResult AttentionOp::verify() {
   Operation *op = getOperation();
+  unsigned numOperands = getNumOperands();
+  unsigned rankToCompareWith = 3;
+  if (numOperands == 6)
+    rankToCompareWith = 2;
+  else if (numOperands != 4)
+    return op->emitOpError("expected operand count 4 or 6, but got")
+           << numOperands;
   ShapedType queryType = getQueryType();
   ShapedType keyType = getKeyType();
   ShapedType valueType = getValueType();
   ShapedType outputType = getOutputType();
+  Type queryElementType = queryType.getElementType();
+  Type keyElementType = keyType.getElementType();
+  Type valueElementType = valueType.getElementType();
+  Type outputElementType = outputType.getElementType();
+  if (failed(checkShapeRank(op, "query", queryType, rankToCompareWith)))
+    return failure();
+  if (failed(checkShapeRank(op, "key", keyType, rankToCompareWith)))
+    return failure();
+  if (failed(checkShapeRank(op, "value", valueType, rankToCompareWith)))
+    return failure();
+  if (failed(checkShapeRank(op, "output", outputType, rankToCompareWith)))
+    return failure();
   ArrayRef<int64_t> queryShape = queryType.getShape();
   ArrayRef<int64_t> keyShape = keyType.getShape();
   ArrayRef<int64_t> valueShape = valueType.getShape();
@@ -2526,10 +2485,38 @@ LogicalResult AttentionOp::verify() {
     return op->emitOpError("incompatible value shape");
   if (failed(verifyCompatibleShape(queryShape, outputShape)))
     return op->emitOpError("incompatible output shape");
-  if (keyShape[0] != queryShape[0])
-    return op->emitOpError("query and key batch mismatch");
-  if (keyShape[2] != queryShape[2])
-    return op->emitOpError("query and key head dimension mismatch");
+  if (queryElementType != keyElementType || keyElementType != valueElementType)
+    return op->emitOpError(
+        "element types of (Q)uery, (K)ey and (V)value should be same");
+  if (numOperands == 4) {
+    // Vanilla attention.
+    if (queryElementType != outputElementType)
+      return op->emitOpError("expected element type for Output ")
+             << queryElementType << "but found " << outputElementType
+             << " instead";
+    if (keyShape[2] != queryShape[2])
+      return op->emitOpError("query and key head dimension mismatch");
+  }
+  if (numOperands == 6) {
+    // Tiled/Flash attention.
+    ShapedType maxType = *getMaxType();
+    ShapedType sumType = *getSumType();
+    if (failed(checkShapeRank(op, "max", maxType, 1)))
+      return failure();
+    if (failed(checkShapeRank(op, "sum", sumType, 1)))
+      return failure();
+    Type maxElementType = maxType.getElementType();
+    Type sumElementType = sumType.getElementType();
+    ArrayRef<int64_t> maxShape = maxType.getShape();
+    ArrayRef<int64_t> sumShape = sumType.getShape();
+    if (outputElementType != maxElementType || maxElementType != sumElementType)
+      return op->emitOpError(
+          "element types of tiled output, max and sum should be same");
+    if (failed(verifyCompatibleShape(maxShape, sumShape)))
+      return op->emitOpError("incompatible sum shape");
+    if (maxShape[0] != queryShape[0])
+      return op->emitOpError("Query and max dimension-0 mismatch");
+  }
   return success();
 }
 
@@ -2650,7 +2637,6 @@ DEFINE_OP_GET_EFFECTS(PackOp)
 DEFINE_OP_GET_EFFECTS(UnPackOp)
 DEFINE_OP_GET_EFFECTS(WinogradInputTransformOp)
 DEFINE_OP_GET_EFFECTS(WinogradOutputTransformOp)
-DEFINE_OP_GET_EFFECTS(SoftmaxOp)
 DEFINE_OP_GET_EFFECTS(AttentionOp)
 
 //===----------------------------------------------------------------------===//
@@ -2712,71 +2698,6 @@ LogicalResult UnsetEncodingOp::reifyResultShapes(
   reifiedReturnShapes.resize(1);
   reifiedReturnShapes[0] = getDims(builder, getLoc(), getSource());
   return success();
-}
-
-namespace {
-/// This is derived from mlir/lib/Dialect/Linalg/IR/LinalgOps.cpp without any
-/// changes.
-struct FoldTensorCastOp : public OpInterfaceRewritePattern<LinalgExtOp> {
-  using OpInterfaceRewritePattern<LinalgExtOp>::OpInterfaceRewritePattern;
-
-  LogicalResult matchAndRewrite(LinalgExtOp op,
-                                PatternRewriter &rewriter) const override {
-    // If no operand comes from a tensor::CastOp and can be folded then fail.
-    bool hasTensorCastOperand =
-        llvm::any_of(op->getOpOperands(), [&](OpOperand &opOperand) {
-          if (opOperand.get().isa<BlockArgument>())
-            return false;
-          auto castOp = opOperand.get().getDefiningOp<tensor::CastOp>();
-          return castOp && canFoldIntoConsumerOp(castOp);
-        });
-    if (!hasTensorCastOperand)
-      return failure();
-
-    SmallVector<Type, 4> newResultTypes;
-    newResultTypes.reserve(op->getNumResults());
-    SmallVector<Value, 4> newOperands;
-    newOperands.reserve(op->getNumOperands());
-    // Inputs may fold.
-    auto destinationStyleOp =
-        cast<DestinationStyleOpInterface>(op.getOperation());
-    for (OpOperand &opOperand : op->getOpOperands()) {
-      auto tensorCastOp = opOperand.get().getDefiningOp<tensor::CastOp>();
-      newOperands.push_back(canFoldIntoConsumerOp(tensorCastOp)
-                                ? tensorCastOp.getSource()
-                                : opOperand.get());
-      if (destinationStyleOp.isDpsInit(&opOperand)) {
-        newResultTypes.push_back(newOperands.back().getType());
-      }
-    }
-    // Clone op.
-    Operation *newOp = mlir::clone(rewriter, op, newResultTypes, newOperands);
-    SmallVector<Value, 4> replacements;
-    replacements.reserve(newOp->getNumResults());
-    for (auto result : llvm::zip(op->getResults(), newOp->getResults())) {
-      Value oldResult = std::get<0>(result);
-      Value newResult = std::get<1>(result);
-      if (newResult.getType() != oldResult.getType()) {
-        replacements.push_back(rewriter.create<tensor::CastOp>(
-            op->getLoc(), oldResult.getType(), newResult));
-      } else {
-        replacements.push_back(newResult);
-      }
-    }
-    rewriter.replaceOp(op, replacements);
-
-    return success();
-  }
-};
-} // namespace
-
-//===----------------------------------------------------------------------===//
-// LinalgExtDialect
-//===----------------------------------------------------------------------===//
-
-void IREELinalgExtDialect::getCanonicalizationPatterns(
-    RewritePatternSet &results) const {
-  results.add<FoldTensorCastOp>(getContext());
 }
 
 // clang-format off

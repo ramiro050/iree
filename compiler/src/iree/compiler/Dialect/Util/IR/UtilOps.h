@@ -27,12 +27,28 @@
 #define GET_OP_CLASSES
 #include "iree/compiler/Dialect/Util/IR/UtilOps.h.inc" // IWYU pragma: export
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
+//===----------------------------------------------------------------------===//
+// Experimental
+//===----------------------------------------------------------------------===//
+
+// NOTE: this is a placeholder for a util.tree_switch (or something) op that
+// looks like scf.index_switch but with a region per case. For now we emit a
+// sequence of arith.select ops and return the index of the first condition that
+// is true. Would be nicer with some range template magic instead of an index.
+// Returns an index of -1 if no case matches.
+Value buildIfElseTree(
+    Location loc, size_t count,
+    std::function<Value(Location, size_t, OpBuilder &)> caseBuilder,
+    OpBuilder &builder);
 
 //===----------------------------------------------------------------------===//
 // Utils
 //===----------------------------------------------------------------------===//
+
+// Removes duplicate attributes in the array (if any).
+ArrayAttr deduplicateArrayElements(ArrayAttr arrayAttr);
 
 // Returns the dynamic size of the value at |index|.
 Value findValueSizeInList(unsigned index, ValueRange values, ValueRange sizes);
@@ -208,7 +224,6 @@ void printShapedFunctionSignature(OpAsmPrinter &p, Operation *op,
                                   ArrayAttr tiedOperands, ArrayAttr argAttrs,
                                   ArrayAttr resultAttrs);
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_DIALECT_UTIL_IR_UTILOPS_H_

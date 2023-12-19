@@ -9,8 +9,7 @@
 
 #include "iree/compiler/Utils/OptionUtils.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 struct BindingOptions {
   // Whether to include runtime support functions for the IREE native ABI.
@@ -40,17 +39,6 @@ struct InputDialectOptions {
     // A named input pipeline from a plugin. If set, then 'pluginInputPipeline'
     // must be set.
     plugin,
-#ifdef IREE_HAVE_STABLEHLO_INPUT
-    // Legalizes input defined over StableHLO ops.
-    stablehlo,
-    // Special case of 'stablehlo' legalization which also performs some XLA
-    // preprocessing, e.g., flattening of tuples.
-    stablehlo_xla,
-#endif // IREE_HAVE_STABLEHLO_INPUT
-#ifdef IREE_HAVE_TOSA_INPUT
-    // Legalizes input defined over TOSA ops.
-    tosa,
-#endif // IREE_HAVE_TOSA_INPUT
   };
   // The flag value is captured into spec by the CL system and it must be
   // interpreted by parseInputTypeSpec.
@@ -79,8 +67,11 @@ struct GlobalOptimizationOptions {
   bool promoteBF16ToF32 = false;
   bool demoteI64ToI32 = false;
 
+  // Enables transposing all concatenations to the outer most dimension.
+  bool outerDimConcat = false;
+
   // Enables data tiling.
-  bool dataTiling = false;
+  bool dataTiling = true;
 
   // Enables const-expr hoisting into globals.
   bool constExprHoisting = true;
@@ -94,6 +85,10 @@ struct GlobalOptimizationOptions {
 
   // Strips debug assertions after any useful information has been extracted.
   bool stripAssertions = false;
+
+  // Maximum byte size increase allowed for constant expr hoisting policy to
+  // allow hoisting. The threshold is 1MB by default.
+  int64_t constExprMaxSizeIncreaseThreshold = 1024 * 1024;
 
   void bindOptions(OptionsBinder &binder);
   using FromFlags = OptionsFromFlags<GlobalOptimizationOptions>;
@@ -124,7 +119,7 @@ struct SchedulingOptions {
   ExecutionModel executionModel = ExecutionModel::AsyncInternal;
 
   // TODO(benvanik): find a way to share this with
-  // Stream/Transforms/PassDetail.h w/o circular deps.
+  // Stream/Transforms/Passes.h w/o circular deps.
   // Defines the output format of a dump pass.
   enum class DumpOutputFormat {
     // Dumping disabled.
@@ -160,7 +155,6 @@ struct PreprocessingOptions {
   using FromFlags = OptionsFromFlags<PreprocessingOptions>;
 };
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_PIPELINES_OPTIONS_H_

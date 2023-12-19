@@ -66,6 +66,8 @@ iree_cc_library(
     "task_impl.h"
     "topology.c"
     "topology_cpuinfo.c"
+    "topology_darwin.c"
+    "topology_emscripten.c"
     "topology_win32.c"
     "worker.c"
     "worker.h"
@@ -143,6 +145,7 @@ iree_cc_test(
   DEPS
     ::task
     iree::base
+    iree::base::internal::threading
     iree::task::testing::test_util
     iree::testing::gtest
     iree::testing::gtest_main

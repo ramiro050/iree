@@ -1,5 +1,27 @@
 // RUN: iree-opt --split-input-file --iree-stream-annotate-dispatch-arguments %s | FileCheck %s
 
+// Tests that external executables don't get annotated
+
+// CHECK-LABEL: @skipExternExecutablesEx
+stream.executable private @skipExternExecutablesEx {
+  // CHECK: stream.executable.export public @dispatch
+  stream.executable.export public @dispatch
+}
+func.func @skipExternExecutables(%arg0: i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c0_i32 = arith.constant 0 : i32
+  %alloc = stream.resource.alloc uninitialized : !stream.resource<transient>{%c1}
+  %result_timepoint = stream.cmd.execute with(%alloc as %capture: !stream.resource<transient>{%c1}) {
+    stream.cmd.dispatch @annotatePotentialValuesEx::@dispatch[%c1, %c1, %c1](%c0_i32 : i32) {
+      rw %capture[%c0 for %c1] : !stream.resource<transient>{%c1}
+    }
+  } => !stream.timepoint
+  return
+}
+
+// -----
+
 // Tests that operands are annotated with their potential values.
 // %arg0: cannot be annotated because it comes from outside the program.
 // %arg1: all values known, gets alignment being an index.
@@ -14,8 +36,8 @@ stream.executable private @annotatePotentialValuesEx {
     // CHECK-SAME: %arg0: i32,
     // CHECK-SAME: %arg1: index {stream.alignment = 4 : index, stream.values = [20 : index, 40 : index]},
     // CHECK-SAME: %arg2: i1 {stream.values = [false, true]},
-    // CHECK-SAME: %arg3: f32)
-    func.func @dispatch(%arg0: i32, %arg1: index, %arg2: i1, %arg3: f32) {
+    // CHECK-SAME: %arg3: f32
+    func.func @dispatch(%arg0: i32, %arg1: index, %arg2: i1, %arg3: f32, %binding: !stream.binding) {
       return
     }
   }
@@ -61,7 +83,7 @@ stream.executable private @annotateOperandAlignmentEx {
     // CHECK-SAME: %arg2: index {stream.values = [4096 : index, 4097 : index]},
     // CHECK-SAME: %arg3: index {stream.alignment = 16 : index, stream.values = [1200 : index, 5232 : index]}
     // CHECK-SAME: %arg4: index {stream.alignment = 1024 : index, stream.values = [1024 : index, 2048 : index]}
-    func.func @dispatch(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index) {
+    func.func @dispatch(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %binding: !stream.binding) {
       return
     }
   }

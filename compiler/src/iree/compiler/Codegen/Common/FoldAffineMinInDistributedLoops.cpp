@@ -33,18 +33,7 @@
 
 #define DEBUG_TYPE "iree-codegen-fold-affinemin-in-distributed-loops"
 
-namespace mlir {
-namespace iree_compiler {
-
-/// Gets the given `attrOrValue` as a Value by creating constant ops for
-/// attributes.
-static Value getAsValue(OpFoldResult attrOrValue, OpBuilder &builder,
-                        Location loc) {
-  if (Value val = attrOrValue.dyn_cast<Value>())
-    return val;
-  auto attr = llvm::cast<IntegerAttr>(attrOrValue.get<Attribute>());
-  return builder.create<arith::ConstantIndexOp>(loc, attr.getInt());
-}
+namespace mlir::iree_compiler {
 
 #ifndef NDEBUG
 inline raw_ostream &operator<<(raw_ostream &os,
@@ -196,5 +185,4 @@ createFoldAffineMinInDistributedLoopsPass() {
   return std::make_unique<FoldAffineMinInDistributedLoopsPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

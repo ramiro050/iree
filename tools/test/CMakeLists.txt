@@ -14,20 +14,26 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "benchmark_flags.txt"
     "compile_pipelines.mlir"
     "compile_to_continuation.mlir"
     "compile_to_phase.mlir"
     "executable_benchmarks.mlir"
+    "executable_configurations.mlir"
     "executable_sources.mlir"
     "iree-benchmark-module.mlir"
+    "iree-dump-parameters.txt"
     "iree-run-mlir.mlir"
     "iree-run-module-expected.mlir"
+    "iree-run-module-inputs.mlir"
     "iree-run-module-outputs.mlir"
     "iree-run-module.mlir"
     "iree-run-trace.mlir"
     "multiple_args.mlir"
     "multiple_exported_functions.mlir"
     "null_values.mlir"
+    "parameters_scoped.mlir"
+    "parameters_unscoped.mlir"
     "repeated_return.mlir"
     "scalars.mlir"
   TOOLS
@@ -36,6 +42,7 @@ iree_lit_test_suite(
     iree-benchmark-module
     iree-benchmark-trace
     iree-compile
+    iree-dump-parameters
     iree-opt
     iree-run-mlir
     iree-run-module
@@ -44,22 +51,10 @@ iree_lit_test_suite(
   DATA
     echo_npy.py
     iree-run-trace.yml
+    parameters_a.safetensors
+    parameters_b.safetensors
   LABELS
     "driver=local-task"
-    "driver=vulkan"
-    "hostonly"
-)
-
-iree_lit_test_suite(
-  NAME
-    benchmark_flags
-  SRCS
-    "benchmark_flags.txt"
-  TOOLS
-    FileCheck
-    iree-benchmark-module
-    iree-compile
-  LABELS
     "hostonly"
 )
 
@@ -88,9 +83,9 @@ if(IREE_BUILD_TESTS AND
       "local-sync"
     RUNNER_ARGS
       "--function=abs"
-      "--input=f32=-10"
+      "--input=2xf32=-10 -5"
     EXPECTED_OUTPUT
-      "f32=10"
+      "2xf32=10 5"
     DEPS
       iree_tools_test_iree_run_module_bytecode_module_vmvx
   )

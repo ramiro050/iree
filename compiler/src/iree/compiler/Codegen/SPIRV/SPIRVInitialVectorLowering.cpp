@@ -35,8 +35,8 @@
 
 #define DEBUG_TYPE "iree-spirv-initial-vector-lowering"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
 
 void debugPrint(func::FuncOp funcOp, const char *message) {
@@ -80,10 +80,11 @@ SmallVector<int64_t> getNativeVectorShapeImpl(VectorTransferOpInterface op) {
   SmallVector<int64_t> nativeSize(vecType.getRank(), 1);
   for (const auto &[index, dim] :
        llvm::enumerate(op.getPermutationMap().getResults())) {
-    if (auto dimExpr = dim.dyn_cast<AffineDimExpr>()) {
+    if (auto dimExpr = dyn_cast<AffineDimExpr>(dim)) {
       if (dimExpr.getPosition() == op.getPermutationMap().getNumDims() - 1) {
-        nativeSize[index] = getMemoryVectorSize(
-            op.source(), vecType.getElementType(), vecType.getShape()[index]);
+        nativeSize[index] =
+            getMemoryVectorSize(op.getSource(), vecType.getElementType(),
+                                vecType.getShape()[index]);
       }
     }
   }
@@ -448,6 +449,7 @@ public:
           vector::VectorTransformsOptions().setVectorTransposeLowering(
               vector::VectorTransposeLowering::EltWise);
       vector::populateVectorTransposeLoweringPatterns(patterns, options);
+      vector::populateVectorShapeCastLoweringPatterns(patterns);
       if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
         return signalPassFailure();
       }
@@ -511,5 +513,4 @@ createSPIRVInitialVectorLoweringPass() {
   return std::make_unique<SPIRVInitialLoweringPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

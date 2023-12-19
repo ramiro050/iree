@@ -13,8 +13,7 @@
 #include "llvm/ADT/DenseMapInfo.h"
 #include "mlir/IR/Operation.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 // Represents a register value at a particular usage.
 //
@@ -200,6 +199,9 @@ public:
   // may have their move bit set.
   SmallVector<std::pair<Register, Register>, 8>
   remapSuccessorRegisters(Operation *op, int successorIndex);
+  SmallVector<std::pair<Register, Register>, 8>
+  remapSuccessorRegisters(Location loc, Block *targetBlock,
+                          OperandRange targetOperands);
 
 private:
   int maxI32RegisterOrdinal_ = -1;
@@ -214,8 +216,7 @@ private:
   llvm::DenseMap<Value, Register> map_;
 };
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 namespace llvm {
 template <>

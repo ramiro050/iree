@@ -15,10 +15,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace HAL {
+namespace mlir::iree_compiler::IREE::HAL {
 
 // Defines kinds of Sanitizer
 // The order in enum class should be same as one in flat buffer schema
@@ -45,16 +42,27 @@ struct LLVMTarget {
 
   // Default initialize all fields.
   LLVMTarget();
-  // Initialize for specific triple, CPU and link features.
-  LLVMTarget(std::string_view triple, std::string_view cpu,
-             std::string_view cpuFeatures, bool requestLinkEmbedded);
-  static const LLVMTarget &getForHost();
+
+  void copy(const LLVMTarget &other) {
+    triple = other.triple;
+    cpu = other.cpu;
+    cpuFeatures = other.cpuFeatures;
+    linkEmbedded = other.linkEmbedded;
+  }
+
   void print(llvm::raw_ostream &os) const;
 
   // Stores the target to the given DictionaryAttr in a way that can be
   // later loaded from loadFromConfigAttr().
   void storeToConfigAttrs(MLIRContext *context,
                           SmallVector<NamedAttribute> &config) const;
+
+  static std::optional<LLVMTarget> create(std::string_view triple,
+                                          std::string_view cpu,
+                                          std::string_view cpuFeatures,
+                                          bool requestLinkEmbedded);
+
+  static std::optional<LLVMTarget> createForHost();
 
   // Loads from a DictionaryAttr. On failure returns none and emits.
   static std::optional<LLVMTarget>
@@ -97,8 +105,6 @@ struct LLVMTarget {
   bool linkStatic = DEFAULT_LINK_STATIC;
 
 private:
-  void addTargetCPUFeaturesForCPU();
-
   std::string triple;
   std::string cpu;
   std::string cpuFeatures;
@@ -139,9 +145,6 @@ private:
   void initializeTargetInvariantFlags();
 };
 
-} // namespace HAL
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::HAL
 
 #endif // IREE_COMPILER_DIALECT_HAL_TARGET_LLVMCPU_LLVMTARGETOPTIONS_H_

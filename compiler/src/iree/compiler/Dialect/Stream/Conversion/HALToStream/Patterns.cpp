@@ -13,8 +13,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 
@@ -233,9 +232,8 @@ struct ConvertTensorBarrierOp
       signaledResources.push_back(barrierOp.getResult());
       signaledTimepoints.push_back(barrierOp.getResultTimepoint());
     }
-    Value joinedTimepoint =
-        rewriter.createOrFold<IREE::Stream::TimepointJoinOp>(
-            op.getLoc(), timepointType, signaledTimepoints);
+    Value joinedTimepoint = IREE::Stream::TimepointJoinOp::join(
+        op.getLoc(), signaledTimepoints, rewriter);
     rewriter.create<IREE::Stream::TimepointChainExternalOp>(
         op.getLoc(), joinedTimepoint, ValueRange{adaptor.getSignalFence()},
         /*affinity=*/nullptr);
@@ -278,5 +276,4 @@ void populateHALToStreamConversionPatterns(MLIRContext *context,
   populateHALToStreamConversionPatterns(context, typeConverter, patterns);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

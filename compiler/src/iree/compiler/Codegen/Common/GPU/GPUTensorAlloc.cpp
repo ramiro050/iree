@@ -18,8 +18,7 @@
 
 #define DEBUG_TYPE "iree-codegen-gpu-tensor-alloc"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 // For optimal performance we always want to copy 128 bits
 static constexpr int copyVectorNumBits = 128;
@@ -78,20 +77,6 @@ static bool transposeOpFilter(Operation *op) {
     return false;
   LinalgOpInfo opInfo(linalgOp, sharedMemTransposeFilter);
   return opInfo.isTranspose();
-}
-
-/// Returns true if the index map represents a transpose that benefits from
-/// shared mem.
-static bool isSharedMemTranspose(AffineMap indexMap) {
-  if (!indexMap.isEmpty() && indexMap.isPermutation()) {
-    // Ensure that the fasted moving dimension (the last one) is permuted,
-    // Otherwise shared memory promotion will not benefit the operation.
-    if (indexMap.getDimPosition(indexMap.getNumDims() - 1) !=
-        indexMap.getNumDims() - 1) {
-      return true;
-    }
-  }
-  return false;
 }
 
 namespace {
@@ -242,5 +227,4 @@ createGPUTensorAlloc(GPUPromoteSharedMemPattern promoteSharedMemPattern) {
   return std::make_unique<GPUTensorAllocPass>(promoteSharedMemPattern);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

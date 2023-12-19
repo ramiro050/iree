@@ -42,8 +42,7 @@ using mlir::bufferization::BufferizationOptions;
 using mlir::bufferization::OneShotAnalysisState;
 using mlir::bufferization::OneShotBufferizationOptions;
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 class EliminateEmptyTensorsPass
@@ -91,8 +90,6 @@ private:
   const std::optional<BufferizationOptions::MemCpyFn> memCpyFn;
 };
 } // namespace
-
-static bool isaTensor(Type t) { return llvm::isa<TensorType>(t); };
 
 // Default allocation functions.
 static FailureOr<Value> defaultAllocationFn(OpBuilder &builder, Location loc,
@@ -260,5 +257,4 @@ void addIREEComprehensiveBufferizePasses(
   addIREEPostBufferizationPasses(passManager);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

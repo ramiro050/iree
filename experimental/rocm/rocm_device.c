@@ -21,7 +21,6 @@
 #include "experimental/rocm/status_util.h"
 #include "experimental/rocm/tracing.h"
 #include "iree/base/internal/arena.h"
-#include "iree/hal/utils/buffer_transfer.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/memory_file.h"
 
@@ -131,7 +130,11 @@ iree_status_t iree_hal_rocm_device_create(iree_hal_driver_t* driver,
   IREE_TRACE_ZONE_BEGIN(z0);
   hipCtx_t context;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, ROCM_RESULT_TO_STATUS(syms, hipCtxCreate(&context, 0, device)));
+      z0,
+      ROCM_RESULT_TO_STATUS(syms, hipDevicePrimaryCtxRetain(&context, device)));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, ROCM_RESULT_TO_STATUS(syms, hipCtxSetCurrent(context)));
+
   hipStream_t stream;
   iree_status_t status = ROCM_RESULT_TO_STATUS(
       syms, hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
@@ -145,7 +148,7 @@ iree_status_t iree_hal_rocm_device_create(iree_hal_driver_t* driver,
     if (stream) {
       syms->hipStreamDestroy(stream);
     }
-    syms->hipCtxDestroy(context);
+    syms->hipDevicePrimaryCtxRelease(device);
   }
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -440,7 +443,6 @@ static const iree_hal_device_vtable_t iree_hal_rocm_device_vtable = {
     .create_semaphore = iree_hal_rocm_device_create_semaphore,
     .query_semaphore_compatibility =
         iree_hal_rocm_device_query_semaphore_compatibility,
-    .transfer_range = iree_hal_device_submit_transfer_range_and_wait,
     .queue_alloca = iree_hal_rocm_device_queue_alloca,
     .queue_dealloca = iree_hal_rocm_device_queue_dealloca,
     .queue_read = iree_hal_rocm_device_queue_read,

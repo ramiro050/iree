@@ -20,6 +20,7 @@
 #include "iree/modules/hal/module.h"
 #include "iree/tooling/device_util.h"
 #include "iree/tooling/modules/resolver.h"
+#include "iree/tooling/parameter_util.h"
 #include "iree/vm/bytecode/module.h"
 #include "iree/vm/dynamic/module.h"
 
@@ -195,6 +196,8 @@ static iree_status_t iree_tooling_load_hal_async_module(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_module_register_all_types(instance));
 
+  // TODO(multi-device): create multiple devices (maybe with an
+  // iree_hal_device_list_t helper for retaining/managing the dynamic list).
   // Create the device to use.
   // In the future this will change to a set of available devices instead.
   if (iree_string_view_is_empty(default_device_uri)) {
@@ -213,8 +216,8 @@ static iree_status_t iree_tooling_load_hal_async_module(
   // Create HAL module wrapping the device created above.
   iree_hal_module_flags_t flags = IREE_HAL_MODULE_FLAG_NONE;
   iree_vm_module_t* module = NULL;
-  iree_status_t status =
-      iree_hal_module_create(instance, device, flags, host_allocator, &module);
+  iree_status_t status = iree_hal_module_create(
+      instance, /*device_count=*/1, &device, flags, host_allocator, &module);
 
   if (iree_status_is_ok(status)) {
     *out_module = module;
@@ -423,6 +426,10 @@ static iree_status_t iree_tooling_resolve_module_dependency_callback(
         &state->device_allocator));
   } else if (iree_string_view_equal(dependency->name, IREE_SV("hal_loader"))) {
     IREE_RETURN_IF_ERROR(iree_tooling_load_hal_loader_module(
+        state->instance, state->host_allocator, &module));
+  } else if (iree_string_view_equal(dependency->name,
+                                    IREE_SV("io_parameters"))) {
+    IREE_RETURN_IF_ERROR(iree_tooling_create_parameters_module_from_flags(
         state->instance, state->host_allocator, &module));
   } else {
     // Defer to the generic module resolver registry.

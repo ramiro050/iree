@@ -18,8 +18,7 @@
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Support/LLVM.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 //===----------------------------------------------------------------------===//
 // Traversal control
@@ -231,10 +230,13 @@ public:
 
   // Walks all predecessor blocks of |targetBlock| and provides the operands
   // passed to them along the incoming edge. Note that |targetBlock| may be
-  // enumerated if there is recursion.
+  // enumerated if there is recursion. Includes an offset for mapping the
+  // block arguments.
   TraversalResult walkIncomingBranchOperands(
       Block *targetBlock,
-      std::function<WalkResult(Block *sourceBlock, OperandRange operands)> fn);
+      std::function<WalkResult(Block *sourceBlock, OperandRange operands,
+                               size_t offset)>
+          fn);
 
   // Walks all predecessor blocks providing values for |blockArg|.
   TraversalResult walkIncomingBlockArgument(
@@ -337,7 +339,6 @@ private:
   ModuleAnalysisManager analysisManager;
 };
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_DIALECT_UTIL_ANALYSIS_EXPLORER_H_

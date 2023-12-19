@@ -19,8 +19,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 
@@ -47,8 +46,8 @@ struct CmdDispatchOpPattern
     auto loc = dispatchOp.getLoc();
 
     // TODO(benvanik): support a lightweight switch builder for picking variants
-    // that doesn't pull in the full HAL dialect - today the
-    // DeviceSwitchRewriter needs a !hal.device and its query methods.
+    // that doesn't pull in the full HAL dialect. We could make the match
+    // expressions take a callback that performs the query, for example.
     // For now we bail if there's multiple.
     auto entryPointAttrs = dispatchOp.getEntryPoints().getValue();
     if (entryPointAttrs.size() != 1) {
@@ -76,10 +75,9 @@ struct CmdDispatchOpPattern
         loc, rewriter.getType<IREE::HAL::ExecutableType>(),
         executableOp.getName());
 
-    // TODO(benvanik): a real switch op. For now we inline what the
-    // hal.device.switch op does.
+    // TODO(benvanik): use scf.index_switch as with the full HAL.
     for (auto variantOp : variantOps) {
-      auto exportOps = variantOp.getOps<IREE::HAL::ExecutableExportOp>();
+      auto exportOps = variantOp.getExportOps();
       auto exportIt =
           llvm::find_if(exportOps, [&](IREE::HAL::ExecutableExportOp op) {
             return op.getNameAttr() == entryPointAttr.getLeafReference();
@@ -90,9 +88,6 @@ struct CmdDispatchOpPattern
                << entryPointAttr;
       }
       auto exportOp = *exportIt;
-
-      // TODO(benvanik): check variant target:
-      //   if (variantOp.target().getMatchExpression()) { dispatch }
       dispatchVariant(dispatchOp, adaptor, executableOp, variantOp, exportOp,
                       lookupOp.getResult(), rewriter);
     }
@@ -157,5 +152,4 @@ void populateStreamToHALLoaderPatterns(MLIRContext *context,
   patterns.insert<CmdDispatchOpPattern>(typeConverter, context);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

@@ -20,16 +20,7 @@ using llvm::dbgs;
 
 using namespace mlir::iree_compiler::IREE::Util;
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Util {
-
-static llvm::cl::opt<int64_t> clConstExprMaxSizeIncreaseThreshold(
-    "iree-util-const-expr-max-size-increase-threshold",
-    llvm::cl::desc("Maximum byte size increase allowed for constant expr "
-                   "hoisting policy to allow hoisting."),
-    llvm::cl::init(1024 * 1024));
+namespace mlir::iree_compiler::IREE::Util {
 
 //===----------------------------------------------------------------------===//
 // ConstExprAnalysis
@@ -42,6 +33,11 @@ OpOperand *findOperandFor(Operation *op, Value input) {
       return &operand;
   }
   return nullptr;
+}
+
+bool isHoistableToRootOp(Operation *rootOp, Operation *constOp) {
+  Operation *syms = SymbolTable::getNearestSymbolTable(constOp);
+  return syms == rootOp;
 }
 
 } // namespace
@@ -74,13 +70,16 @@ ConstExprAnalysis::ConstExprAnalysis(Operation *rootOp) {
       auto loadOp = llvm::dyn_cast<GlobalLoadOp>(use);
       if (!loadOp)
         continue;
+      if (!isHoistableToRootOp(rootOp, loadOp))
+        continue;
       constantRoots[loadOp.getResult()] = loadOp;
     }
   });
 
   // Populate the constant roots for all inline constants in the program.
   rootOp->walk([&](arith::ConstantOp constOp) {
-    if (isLegalConstExprRootType(constOp.getResult().getType()))
+    if (isHoistableToRootOp(rootOp, constOp) &&
+        isLegalConstExprRootType(constOp.getResult().getType()))
       constantRoots[constOp.getResult()] = constOp;
   });
 
@@ -248,8 +247,9 @@ void ConstExprAnalysis::dump() const { print(llvm::errs()); }
 //===----------------------------------------------------------------------===//
 
 ConstExprHoistingPolicy::ConstExprHoistingPolicy(
-    const ConstExprAnalysis &analysis)
-    : analysis(analysis), decisions(analysis.allocedConstInfos.size()) {
+    const ConstExprAnalysis &analysis, int64_t threshold)
+    : analysis(analysis), constExprMaxSizeIncreaseThreshold(threshold),
+      decisions(analysis.allocedConstInfos.size()) {
   for (auto &it : analysis.allocedConstInfos) {
     decisions[it.get()] = {};
   }
@@ -320,7 +320,7 @@ void ConstExprHoistingPolicy::initialize() {
 }
 
 static bool doesHoistingIncreaseSizeSignificantly(
-    const ConstExprAnalysis::ConstValueInfo *info) {
+    const ConstExprAnalysis::ConstValueInfo *info, int64_t threshold) {
 
   int64_t inSize = 0;
   for (Value root : info->roots) {
@@ -330,7 +330,7 @@ static bool doesHoistingIncreaseSizeSignificantly(
       for (int64_t dim : type.getShape()) {
         // Conservatively treat dynamic values as 1, to find a lower bound on
         // input size.
-        if (dim != ShapedType::kDynamic) {
+        if (!ShapedType::isDynamic(dim)) {
           elementCount *= dim;
         }
       }
@@ -343,7 +343,7 @@ static bool doesHoistingIncreaseSizeSignificantly(
   if (auto type = dyn_cast<ShapedType>(info->constValue.getType())) {
     int64_t elementCount = 1;
     for (int64_t dim : type.getShape()) {
-      if (dim == ShapedType::kDynamic) {
+      if (ShapedType::isDynamic(dim)) {
         // Dynamic values can lead to an unbounded increase in size, treat this
         // as a significant increase.
         return true;
@@ -354,7 +354,7 @@ static bool doesHoistingIncreaseSizeSignificantly(
         getRoundedPhysicalStorageSize(elementCount, type.getElementType());
   }
 
-  return outSize > inSize + clConstExprMaxSizeIncreaseThreshold.getValue();
+  return outSize > inSize + threshold;
 }
 
 void ConstExprHoistingPolicy::makeInvariantDecision(
@@ -376,7 +376,8 @@ void ConstExprHoistingPolicy::makeInvariantDecision(
 
   // Check 4: Does hoisting this value significantly increase the size of the
   // module?
-  if (doesHoistingIncreaseSizeSignificantly(info)) {
+  if (doesHoistingIncreaseSizeSignificantly(
+          info, constExprMaxSizeIncreaseThreshold)) {
     return decision->disableHoist();
   }
 }
@@ -428,10 +429,7 @@ void ConstExprHoistingPolicy::dumpDotGraph() const {
   printDotGraph(llvm::errs());
 }
 
-} // namespace Util
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Util
 
 namespace llvm {
 template <>

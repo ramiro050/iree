@@ -17,8 +17,7 @@
 #include "iree/compiler/Codegen/Interfaces/PartitionableLoopsInterface.cpp.inc"  // IWYU pragma: export
 // clang-format on
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Filters out dimensions in `parallelLoops` that have unit range in
 /// `loopRanges`.
@@ -49,14 +48,6 @@ getPartitionableLoopsImpl(linalg::LinalgOp linalgOp,
                             .take_back(maxNumPartitionedLoops.value()));
   }
   return parallelLoops;
-}
-
-static llvm::SmallVector<utils::IteratorType>
-getIteratorTypesFromAttr(ArrayAttr iteratorTypesAttr) {
-  return llvm::map_to_vector(iteratorTypesAttr, [](Attribute attr) {
-    return utils::symbolizeIteratorType(llvm::cast<StringAttr>(attr).getValue())
-        .value();
-  });
 }
 
 /// External model implementation for all LinalgOps.
@@ -260,8 +251,6 @@ void registerPartitionableLoopsInterfaceModels(DialectRegistry &registry) {
     IREE::LinalgExt::WinogradOutputTransformOp::attachInterface<
         AllParallelAsPartitionableLoops<
             IREE::LinalgExt::WinogradOutputTransformOp>>(*ctx);
-    IREE::LinalgExt::SoftmaxOp::attachInterface<
-        AllParallelAsPartitionableLoops<IREE::LinalgExt::SoftmaxOp>>(*ctx);
     IREE::LinalgExt::AttentionOp::attachInterface<
         AllParallelAsPartitionableLoops<IREE::LinalgExt::AttentionOp>>(*ctx);
   });
@@ -275,5 +264,4 @@ void registerPartitionableLoopsInterfaceModels(DialectRegistry &registry) {
   });
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

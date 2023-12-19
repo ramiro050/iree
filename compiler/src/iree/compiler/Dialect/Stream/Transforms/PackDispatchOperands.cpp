@@ -7,7 +7,6 @@
 #include "iree/compiler/Dialect/Stream/IR/StreamDialect.h"
 #include "iree/compiler/Dialect/Stream/IR/StreamOps.h"
 #include "iree/compiler/Dialect/Stream/IR/StreamTypes.h"
-#include "iree/compiler/Dialect/Stream/Transforms/PassDetail.h"
 #include "iree/compiler/Dialect/Stream/Transforms/Passes.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -17,14 +16,17 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-stream-pack-dispatch-operands"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Stream {
+namespace mlir::iree_compiler::IREE::Stream {
+
+#define GEN_PASS_DEF_PACKDISPATCHOPERANDSPASS
+#include "iree/compiler/Dialect/Stream/Transforms/Passes.h.inc"
+
 namespace {
 
 //===----------------------------------------------------------------------===//
@@ -75,6 +77,21 @@ static void convertAndDecomposeToI32s(
   if (auto complexType = dyn_cast<ComplexType>(operand.getType())) {
     auto real = builder.create<complex::ReOp>(loc, operand);
     auto imag = builder.create<complex::ImOp>(loc, operand);
+    convertAndDecomposeToI32s(loc, real, newOperands, resourceConfig, builder);
+    convertAndDecomposeToI32s(loc, imag, newOperands, resourceConfig, builder);
+    return;
+  }
+
+  // If the value complex from a complex::BitcastOp we should grab the
+  // real / complex values instead.
+  if (auto bitcast =
+          dyn_cast_or_null<complex::BitcastOp>(operand.getDefiningOp())) {
+    auto complexOperand = bitcast.getOperand();
+    auto complexTy = cast<ComplexType>(complexOperand.getType());
+    auto real = builder.createOrFold<complex::ReOp>(
+        loc, complexTy.getElementType(), complexOperand);
+    auto imag = builder.createOrFold<complex::ImOp>(
+        loc, complexTy.getElementType(), complexOperand);
     convertAndDecomposeToI32s(loc, real, newOperands, resourceConfig, builder);
     convertAndDecomposeToI32s(loc, imag, newOperands, resourceConfig, builder);
     return;
@@ -280,26 +297,22 @@ static void updateExportFuncOp(mlir::func::FuncOp funcOp) {
 }
 
 //===----------------------------------------------------------------------===//
-// -iree-hal-pack-dispatch-operands
+// --iree-hal-pack-dispatch-operands
 //===----------------------------------------------------------------------===//
 
-class PackDispatchOperandsPass
-    : public PackDispatchOperandsBase<PackDispatchOperandsPass> {
-public:
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::arith::ArithDialect>();
-    registry.insert<mlir::complex::ComplexDialect>();
-    registry.insert<IREE::Stream::StreamDialect>();
-  }
-
+struct PackDispatchOperandsPass
+    : public IREE::Stream::impl::PackDispatchOperandsPassBase<
+          PackDispatchOperandsPass> {
   void runOnOperation() override {
     SymbolTable symbolTable(getOperation());
 
     // Convert all public function signatures and manipulate the arguments.
     for (auto executableOp :
          getOperation().getOps<IREE::Stream::ExecutableOp>()) {
-      for (auto funcOp :
-           executableOp.getInnerModule().getOps<mlir::func::FuncOp>()) {
+      auto innerModuleOp = executableOp.getInnerModule();
+      if (!innerModuleOp)
+        continue;
+      for (auto funcOp : innerModuleOp.getOps<mlir::func::FuncOp>()) {
         if (funcOp.isPublic()) {
           updateExportFuncOp(funcOp);
         }
@@ -324,11 +337,4 @@ public:
 
 } // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> createPackDispatchOperandsPass() {
-  return std::make_unique<PackDispatchOperandsPass>();
-}
-
-} // namespace Stream
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Stream

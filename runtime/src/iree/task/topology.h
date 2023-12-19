@@ -49,6 +49,17 @@ typedef uint64_t iree_task_topology_group_mask_t;
 #define IREE_TASK_TOPOLOGY_GROUP_BIT_COUNT \
   (sizeof(iree_task_topology_group_mask_t) * 8)
 
+// Total cache sizes (that we care about).
+// More information may be available but we shouldn't be specializing on it
+// unless absolutely required. Values should ideally be a power-of-two if
+// that's what the hardware has. Values of 0 indicate the particular cache is
+// not present (or not queried).
+typedef struct iree_task_topology_caches_t {
+  uint32_t l1_data;
+  uint32_t l2_data;
+  uint32_t l3_data;
+} iree_task_topology_caches_t;
+
 // Information about a particular group within the topology.
 // Groups may be of varying levels of granularity even within the same topology
 // based on how the topology is defined.
@@ -60,8 +71,11 @@ typedef struct iree_task_topology_group_t {
   // A name assigned to executor workers used for logging/tracing.
   char name[32 - /*group_index*/ 1];
 
-  // Processor index in the cpuinfo set.
+  // Logical processor index.
   uint32_t processor_index;
+
+  // Total cache sizes (that we care about).
+  iree_task_topology_caches_t caches;
 
   // Ideal thread affinity for threads within this group.
   // All threads within the group share the same affinity and this is what
@@ -176,12 +190,33 @@ iree_status_t iree_task_topology_initialize_from_logical_cpu_set(
 iree_status_t iree_task_topology_initialize_from_logical_cpu_set_string(
     iree_string_view_t cpu_id_set, iree_task_topology_t* out_topology);
 
+// Selects what core types in a heterogeneous core cluster are used.
+// This maps to x86 efficiency/performance cores and ARM big.LITTLE cores.
+//
+// Hosting applications can decide whether they want low power consumption/less
+// contention on high performance cores by forcing only low performance cores
+// or predictable(ish) low latency by forcing only high performance cores. On
+// homogeneous core clusters, where wall-time is the primary metric, or where
+// contention is unlikely selecting all cores can usually result in the lowest
+// latency. Each application with each set of programs will need to evaluate for
+// themselves what to use based on their duty cycle, concurrently issued work,
+// and user experience.
+typedef enum iree_task_topology_performance_level_e {
+  // Selects all cores.
+  IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_ANY = 0,
+  // Selects "E(fficiency)" cores that favor lower power/thermal load.
+  IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_LOW,
+  // Selects "P(erformance)" cores that favor higher power/thermal load.
+  IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_HIGH,
+} iree_task_topology_performance_level_t;
+
 // Initializes a topology with one group for each physical core with the given
 // NUMA |node_id| (usually package or cluster). Up to |max_core_count| physical
 // cores will be selected from the node.
 iree_status_t iree_task_topology_initialize_from_physical_cores(
-    iree_task_topology_node_id_t node_id, iree_host_size_t max_core_count,
-    iree_task_topology_t* out_topology);
+    iree_task_topology_node_id_t node_id,
+    iree_task_topology_performance_level_t performance_level,
+    iree_host_size_t max_core_count, iree_task_topology_t* out_topology);
 
 #ifdef __cplusplus
 }  // extern "C"

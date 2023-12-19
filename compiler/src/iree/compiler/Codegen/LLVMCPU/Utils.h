@@ -10,8 +10,7 @@
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 bool preferIntrinsicsOverAsm(IREE::HAL::ExecutableTargetAttr targetAttr);
 
@@ -40,19 +39,6 @@ bool hasAnySVEFeature(IREE::HAL::ExecutableTargetAttr targetAttr);
 /// Returns true if the 'targetAttr' contains '+sme' in its cpu features.
 bool hasSMEFeature(IREE::HAL::ExecutableTargetAttr targetAttr);
 
-/// Find the root operation for the dispatch region. The priority is:
-///   1. A Linalg operation that has reduction loops.
-///   2. Any other Linalg op or LinalgExt op.
-///   3. An operation that implements TilingInterface.
-/// If there are multiple operations meeting the same priority, the one closer
-/// to the end of the function is the root op.
-FailureOr<Operation *> getRootOperation(ArrayRef<Operation *> computeOps);
-
-/// Returns true if all of the element types involved in the linalg op are byte
-/// aligned.
-bool hasByteAlignedElementTypes(linalg::LinalgOp linalgOp);
-
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_LLVMCPU_UTILS_H_

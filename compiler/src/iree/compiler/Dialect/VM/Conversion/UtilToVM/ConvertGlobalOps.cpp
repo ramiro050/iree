@@ -10,8 +10,8 @@
 #include "iree/compiler/Dialect/VM/IR/VMTypes.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
 
 struct InitializerOpConversion
@@ -60,6 +60,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Operation *newOp = nullptr;
     auto convertedType = typeConverter.convertType(op.getType());
+    const bool isInitialized =
+        op.getInitialValueAttr() &&
+        !isa<IREE::Util::UninitializedAttr>(op.getInitialValueAttr());
     if (llvm::isa<IREE::VM::RefType>(convertedType) ||
         IREE::VM::RefType::isCompatible(convertedType)) {
       newOp = rewriter.replaceOpWithNewOp<IREE::VM::GlobalRefOp>(
@@ -67,7 +70,7 @@ public:
           llvm::to_vector(op->getDialectAttrs()));
     } else if (convertedType.isInteger(32)) {
       std::optional<TypedAttr> convertedValue = std::nullopt;
-      if (op.getInitialValue().has_value()) {
+      if (isInitialized) {
         convertedValue = rewriter.getI32IntegerAttr(static_cast<int32_t>(
             llvm::cast<IntegerAttr>(op.getInitialValue().value()).getInt()));
       }
@@ -76,7 +79,7 @@ public:
           llvm::to_vector(op->getDialectAttrs()));
     } else if (convertedType.isInteger(64)) {
       std::optional<TypedAttr> convertedValue = std::nullopt;
-      if (op.getInitialValue().has_value()) {
+      if (isInitialized) {
         convertedValue = rewriter.getI64IntegerAttr(
             llvm::cast<IntegerAttr>(op.getInitialValue().value()).getInt());
       }
@@ -85,7 +88,7 @@ public:
           llvm::to_vector(op->getDialectAttrs()));
     } else if (convertedType.isF32()) {
       std::optional<TypedAttr> convertedValue = std::nullopt;
-      if (op.getInitialValue().has_value()) {
+      if (isInitialized) {
         convertedValue = rewriter.getF32FloatAttr(static_cast<float>(
             llvm::cast<FloatAttr>(op.getInitialValue().value())
                 .getValueAsDouble()));
@@ -95,7 +98,7 @@ public:
           llvm::to_vector(op->getDialectAttrs()));
     } else if (convertedType.isF64()) {
       std::optional<TypedAttr> convertedValue = std::nullopt;
-      if (op.getInitialValue().has_value()) {
+      if (isInitialized) {
         convertedValue = rewriter.getF64FloatAttr(
             llvm::cast<FloatAttr>(op.getInitialValue().value())
                 .getValueAsDouble());
@@ -294,5 +297,4 @@ void populateUtilGlobalToVMPatterns(MLIRContext *context,
       context, typeConverter);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

@@ -10,6 +10,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Endian.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -20,10 +21,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Util {
+namespace mlir::iree_compiler::IREE::Util {
 
 class GlobalOpInterface;
 class GlobalAccessorOpInterface;
@@ -170,6 +168,12 @@ ValueRange findVariadicDynamicDims(unsigned idx, ValueRange values,
 SmallVector<Value> buildDynamicDimsForValue(Location loc, Value value,
                                             OpBuilder &builder);
 
+// Returns dimension values for each dynamic dimension of the given |values|.
+// |values| must all have ShapedTypes. The returned value range will be empty if
+// all shapes are fully static.
+SmallVector<Value> buildDynamicDimsForValues(Location loc, ValueRange values,
+                                             OpBuilder &builder);
+
 // Builds a ranked shape with all dimension values for the given operand.
 SmallVector<Value> buildOperandShape(ShapeAwareOpInterface op,
                                      unsigned operandIdx, OpBuilder &builder);
@@ -281,10 +285,7 @@ static inline int64_t getRoundedPhysicalStorageSize(ShapedType type) {
                                        type.getElementType());
 }
 
-} // namespace Util
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Util
 
 #include "iree/compiler/Dialect/Util/IR/UtilAttrInterfaces.h.inc" // IWYU pragma: export
 #include "iree/compiler/Dialect/Util/IR/UtilOpInterfaces.h.inc" // IWYU pragma: export

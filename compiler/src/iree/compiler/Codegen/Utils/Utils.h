@@ -15,14 +15,14 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 static constexpr unsigned kNumMaxParallelDims = 3;
 
@@ -72,7 +72,12 @@ const char *getIreeArchNameForTargetTriple(llvm::Triple triple);
 
 /// Methods to get target information.
 bool isVMVXBackend(IREE::HAL::ExecutableTargetAttr targetAttr);
-bool hasMicrokernels(IREE::HAL::ExecutableTargetAttr targetAttr);
+
+// Returns true if the ukernel with given `ukernelName` is enabled.
+// If `ukernelName` is empty (the default), returns true if any ukernel
+// is enabled at all.
+bool hasUkernel(IREE::HAL::ExecutableTargetAttr targetAttr,
+                StringRef ukernelName = "");
 
 /// Returns the CPU target features associated with the `targetAttr`, if set.
 std::optional<StringRef>
@@ -86,6 +91,7 @@ bool isX86(IREE::HAL::ExecutableTargetAttr targetAttr);
 bool isX86_64(IREE::HAL::ExecutableTargetAttr targetAttr);
 bool isAArch64(IREE::HAL::ExecutableTargetAttr targetAttr);
 bool isRISCV(IREE::HAL::ExecutableTargetAttr targetAttr);
+bool isRISCV32(IREE::HAL::ExecutableTargetAttr targetAttr);
 
 /// Checks if a tensor value is generated from a read-only object, like
 /// and interface binding with read-only attribute or from an `arith.constant`
@@ -170,6 +176,13 @@ isTiledAndDistributedLoop(scf::ForOp forOp);
 SmallVector<LoopTilingAndDistributionInfo>
 getTiledAndDistributedLoopInfo(func::FuncOp funcOp);
 
+/// Sets the tile sizes of the SCFTilingOptions. If `tileScalableFlags` are
+/// provided the corresponding tile size will be multiplied by a vector.vscale
+/// op.
+void setSCFTileSizes(scf::SCFTilingOptions &options, TilingInterface op,
+                     ArrayRef<int64_t> tileSizes,
+                     ArrayRef<bool> tileScalableFlags);
+
 Operation *createLinalgCopyOp(OpBuilder &b, Location loc, Value from, Value to,
                               ArrayRef<NamedAttribute> attributes = {});
 
@@ -202,15 +215,10 @@ void replaceMemrefUsesAndPropagateType(RewriterBase &rewriter, Location loc,
 void sinkOpsInCFG(const SmallVector<Operation *> &allocs,
                   DominanceInfo &dominators);
 
-// Track temporary allocations that are never read from. If this is the case
-// it means both the allocations and associated stores can be removed.
-void eraseDeadAllocAndStores(Operation *parentOp);
-
 // Check if there is a fused linalg op present in the backward slice of any of
 // the inputs.
 bool hasFusedLeadingOp(linalg::LinalgOp rootOp);
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_UTILS_UTILS_H_

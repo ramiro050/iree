@@ -10,10 +10,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Util {
+namespace mlir::iree_compiler::IREE::Util {
 
 //------------------------------------------------------------------------------
 // Closure optimization
@@ -134,14 +131,12 @@ static bool isConstantInlinable(const ClosureOptimizationOptions &options,
     // know they are a splat - which is why it's so important we inline them
     // here so we know when they are used that's the case.
     return true;
-  } else if (auto denseAttr =
-                 llvm::dyn_cast<DenseElementsAttr>(constantValueAttr)) {
+  } else if (auto attr = llvm::dyn_cast<ElementsAttr>(constantValueAttr)) {
     // Smallish constants are worth moving inside.
     auto shapedType = llvm::cast<ShapedType>(constantType);
     uint64_t estimatedByteLength =
         IREE::Util::getRoundedPhysicalStorageSize(shapedType);
-    return denseAttr.isSplat() ||
-           estimatedByteLength <= maxInlinedConstantBytes;
+    return attr.isSplat() || estimatedByteLength <= maxInlinedConstantBytes;
   } else if (constantType.isIntOrIndexOrFloat()) {
     // Primitives can always go in.
     return true;
@@ -320,7 +315,4 @@ LogicalResult optimizeClosureLikeOp(const ClosureOptimizationOptions &options,
   return success();
 }
 
-} // namespace Util
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Util

@@ -12,8 +12,10 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-namespace iree_compiler {
+// Forward declare from iree/compiler/PluginAPI/Client.h.
+class PipelineExtensions;
+
+namespace mlir::iree_compiler {
 
 #define GEN_PASS_DECL
 #include "iree/compiler/InputConversion/Common/Passes.h.inc"
@@ -32,8 +34,8 @@ void buildCommonInputConversionPassPipeline(OpPassManager &passManager);
 
 std::unique_ptr<OperationPass<ModuleOp>>
 createAutoInputConversionPipelinePass();
-std::unique_ptr<OperationPass<ModuleOp>> createAutoInputConversionPipelinePass(
-    const AutoInputConversionPipelineOptions &options);
+std::unique_ptr<OperationPass<ModuleOp>>
+createAutoInputConversionPipelinePass(PipelineExtensions *pipelineExtensions);
 std::unique_ptr<OperationPass<ModuleOp>> createIREEImportPublicPass();
 std::unique_ptr<OperationPass<ModuleOp>> createImportMLProgramPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -48,7 +50,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createSanitizeModuleNamesPass();
 
 void registerCommonInputConversionPasses();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_INPUTCONVERSION_COMMON_PASSES_H_

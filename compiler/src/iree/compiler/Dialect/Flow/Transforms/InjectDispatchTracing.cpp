@@ -15,10 +15,7 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Flow {
+namespace mlir::iree_compiler::IREE::Flow {
 
 static SmallVector<Value> filterTensorValues(ValueRange &&range) {
   SmallVector<Value> result;
@@ -37,23 +34,18 @@ public:
   void runOnOperation() override {
     auto funcOp = getOperation();
     for (auto dispatchOp : funcOp.getFunctionBody().getOps<DispatchOp>()) {
-      std::string entryPointName =
-          dispatchOp.getEntryPoint().getRootReference().getValue().str();
-      for (FlatSymbolRefAttr nestedRef :
-           dispatchOp.getEntryPoint().getNestedReferences()) {
-        entryPointName = (entryPointName + "::" + nestedRef.getValue()).str();
-      }
+      std::string entryPointName = dispatchOp.getEntryPointName();
 
       // Input tensors:
       OpBuilder builder(dispatchOp);
-      builder.create<TensorTraceOp>(
+      builder.create<IREE::Flow::TensorTraceOp>(
           dispatchOp.getLoc(),
           builder.getStringAttr(entryPointName + " inputs"),
           filterTensorValues(dispatchOp.getArguments()));
 
       // Output tensors:
       builder.setInsertionPointAfter(dispatchOp);
-      builder.create<TensorTraceOp>(
+      builder.create<IREE::Flow::TensorTraceOp>(
           dispatchOp.getLoc(),
           builder.getStringAttr(entryPointName + " outputs"),
           filterTensorValues(dispatchOp.getResults()));
@@ -66,7 +58,4 @@ createInjectDispatchTracingPass() {
   return std::make_unique<InjectDispatchTracingPass>();
 }
 
-} // namespace Flow
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Flow

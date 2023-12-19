@@ -32,8 +32,7 @@
 
 #define DEBUG_TYPE "iree-codegen-bufferization-analysis"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 //===----------------------------------------------------------------------===//
 // Analysis to compute equivalence sets.
@@ -74,7 +73,7 @@ static bool isFromReadOnlyTensor(Value v, const BufferizationPlan &plan) {
     auto arg = llvm::cast<BlockArgument>(v);
     return TypeSwitch<Operation *, bool>(arg.getOwner()->getParentOp())
         .Case<scf::ForOp>([&](scf::ForOp forOp) {
-          Value initOperand = forOp.getOpOperandForRegionIterArg(arg).get();
+          Value initOperand = forOp.getTiedLoopInit(arg)->get();
           if (plan.isEquivalent(arg, initOperand)) {
             return isFromReadOnlyTensor(initOperand, plan);
           }
@@ -460,42 +459,6 @@ static void hasDestructiveUpdatePattern(Value source, BufferizationPlan &plan) {
   }
 }
 
-/// Ties together operands for operand fusion as exists today by reusing buffer
-/// for the result for one of the inputs to do in-place update. Ideally we dont
-/// need to do this if the fusion just happens at vector level. To be removed
-/// when that is worked out and can be load-bearing. Conditions checked here are
-/// 1) the result does not use the value of the `outs` buffer.
-/// 2) the input has a single use (this op) and has the same indexing map as the
-///    result.
-/// 3) the input equivalence set does not have an interface binding, i.e. it is
-///    not using a buffer from the dispatch ABI.
-static void tieOperandsForOperandFusion(linalg::LinalgOp linalgOp,
-                                        BufferizationPlan &plan) {
-  for (auto [index, result] : llvm::enumerate(linalgOp.getDpsInitsMutable())) {
-    if (linalgOp.payloadUsesValueFromOperand(&result)) {
-      continue;
-    }
-    for (OpOperand *input : linalgOp.getDpsInputOperands()) {
-      auto tensorType =
-          llvm::dyn_cast<RankedTensorType>(input->get().getType());
-      if (!tensorType)
-        continue;
-      Type inputElementType = tensorType.getElementType();
-      Type resultElementType =
-          llvm::cast<RankedTensorType>(result.get().getType()).getElementType();
-      if (input->get().hasOneUse() && (inputElementType == resultElementType) &&
-          linalgOp.getMatchingIndexingMap(input) ==
-              linalgOp.getMatchingIndexingMap(&result) &&
-          !getEquivalentOpOfType<IREE::HAL::InterfaceBindingSubspanOp>(
-              input->get(), plan) &&
-          !isFromReadOnlyTensor(input->get(), plan)) {
-        plan.unionSets(linalgOp->getResult(index), input->get());
-        break;
-      }
-    }
-  }
-}
-
 void BufferizationPlan::unionSets(Value v1, Value v2) {
   if (!canSetsBeMerged(v1, v2, *this)) {
     return;
@@ -672,5 +635,4 @@ LogicalResult createTensorEquivalenceClasses(func::FuncOp funcOp,
   return success();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

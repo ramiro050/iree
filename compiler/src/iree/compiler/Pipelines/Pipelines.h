@@ -13,8 +13,7 @@
 #include "iree/compiler/Pipelines/Options.h"
 #include "mlir/Pass/PassManager.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 class PipelineExtensions;
 
@@ -42,6 +41,7 @@ enum class IREEVMPipelinePhase {
   Flow,
   Stream,
   ExecutableSources,
+  ExecutableConfigurations,
   ExecutableTargets,
   HAL,
   VM,
@@ -68,8 +68,12 @@ inline static void enumerateIREEVMPipelinePhases(
   callback(IREEVMPipelinePhase::Stream, "stream",
            "Compiles up to the `stream` dialect.");
   callback(IREEVMPipelinePhase::ExecutableSources, "executable-sources",
-           "Compiles up to just before `hal.executable`s are translated, "
+           "Compiles up to just before `hal.executable`s are configured, "
            "excluding codegen.");
+  callback(IREEVMPipelinePhase::ExecutableConfigurations,
+           "executable-configurations",
+           "Compiles up to just before `hal.executable`s are translated, "
+           "including selection of translation strategies for codegen.");
   callback(IREEVMPipelinePhase::ExecutableTargets, "executable-targets",
            "Compiles up to translated `hal.executable`s, including codegen.");
   callback(IREEVMPipelinePhase::HAL, "hal",
@@ -114,7 +118,6 @@ void buildDefaultIREEVMTransformPassPipeline(OpPassManager &passManager);
 // Registration hooks.
 void registerIREEVMTransformPassPipeline();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_PIPELINES_PIPELINES_H_

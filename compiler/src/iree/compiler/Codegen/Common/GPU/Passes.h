@@ -12,8 +12,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 //===----------------------------------------------------------------------===//
 // Definitions and Utilities
@@ -54,6 +53,11 @@ LogicalResult tileReductionToSerialLoops(func::FuncOp funcOp,
 
 LogicalResult swizzleWorkgroupsInFunc(func::FuncOp funcOp,
                                       unsigned swizzleLogTile);
+
+// Lowers workgroup memory copies to distributed transfer_read/transfer_write
+// ops. Expects the memory copy to be marked with copy_to_workgroup_memory
+// marker.
+LogicalResult gpuDistributeSharedMemoryCopy(func::FuncOp funcOp);
 
 //===----------------------------------------------------------------------===//
 // Passes
@@ -107,17 +111,13 @@ createGPUTensorTile(bool distributeToWarp = false);
 /// Tile reductions and generate serial loops around reductions.
 std::unique_ptr<OperationPass<func::FuncOp>> createGPUTileReductionPass();
 
-/// Convert Linalg ops to Vector.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createGPUVectorizationPass(bool generateContract = true,
-                           int64_t maxVectorSize = 4096);
-
 // Distributes vector ops to all threads/warps in a GPU workgroup.
 // `getWarpSize` is for deciding the warp size to use; it takes the
 // current function containing those vector ops as the argument.
 // If nullptr, warp size 32 will be used.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createConvertVectorReductionToGPUPass(
+    bool expandSubgroupReduction = true,
     std::function<int(func::FuncOp)> getWarpSize = nullptr);
 
 /// Pass to specialize workgroup distribution loops
@@ -128,10 +128,12 @@ createWorkgroupSpecializationPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createWorkGroupSwizzle(unsigned swizzleLogTile = 0);
 
+// This pass generalizes named Linalg ops that are better off as generics.
+std::unique_ptr<OperationPass<func::FuncOp>> createGPUGeneralizeNamedOpsPass();
+
 /// Register Common GPU passes.
 void registerCodegenCommonGPUPasses();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_COMMON_GPU_PASSES_H_

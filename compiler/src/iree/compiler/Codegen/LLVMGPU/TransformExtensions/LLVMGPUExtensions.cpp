@@ -543,7 +543,8 @@ static void populateVectorTransferWriteDistribution(Operation *target,
                                                     PatternBenefit benefit) {
   assert(target->hasTrait<OpTrait::IsIsolatedFromAbove>());
   vector::populateDistributeTransferWriteOpPatterns(
-      patterns, simpleDistributionFunction, benefit);
+      patterns, simpleDistributionFunction, /*maxNumElementsToExtract=*/1,
+      benefit);
 }
 
 static Value simpleWarpShuffleFunction(Location loc, OpBuilder &builder,
@@ -566,12 +567,13 @@ static void populatePropagateVectorDistribution(Operation *target,
                                                 RewritePatternSet &patterns,
                                                 PatternBenefit benefit,
                                                 unsigned subgroupSize) {
-  auto groupReductionFn = [subgroupSize](
-                              Location loc, OpBuilder &builder, Value input,
-                              vector::CombiningKind kind, uint32_t size) {
-    return mlir::iree_compiler::emitGPUGroupReduction(loc, builder, input, kind,
-                                                      size, subgroupSize);
-  };
+  auto groupReductionFn =
+      [subgroupSize](Location loc, OpBuilder &builder, Value input,
+                     vector::CombiningKind kind, uint32_t size) {
+        return mlir::iree_compiler::emitGPUGroupReduction(
+            loc, builder, input, kind, size, subgroupSize,
+            /*expandSubgroupReduce=*/true);
+      };
   assert(target->hasTrait<OpTrait::IsIsolatedFromAbove>());
   vector::populatePropagateWarpVectorDistributionPatterns(
       patterns, simpleDistributionFunction, simpleWarpShuffleFunction, benefit);
