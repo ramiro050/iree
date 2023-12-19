@@ -17,8 +17,7 @@
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 
@@ -63,8 +62,7 @@ struct BytecodeVersionParser : public llvm::cl::parser<std::optional<int64_t>> {
 
 } // namespace
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 int mlir::iree_compiler::runIreecMain(int argc, char **argv) {
   static llvm::cl::OptionCategory mainOptions("IREE Main Options");
@@ -78,7 +76,7 @@ int mlir::iree_compiler::runIreecMain(int argc, char **argv) {
       "o", llvm::cl::desc("Output filename"), llvm::cl::value_desc("filename"),
       llvm::cl::init("-"), llvm::cl::cat(mainOptions));
 
-  // The output format flag is the master control for what we do with the
+  // The output format flag is the primary control for what we do with the
   // in-memory compiled form.
   llvm::cl::opt<OutputFormat> outputFormat(
       "output-format", llvm::cl::desc("Format of compiled output"),

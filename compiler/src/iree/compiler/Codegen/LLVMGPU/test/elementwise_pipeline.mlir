@@ -1,8 +1,7 @@
-
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-llvmgpu-lower-executable-target)))" %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-llvmgpu-select-lowering-strategy, iree-llvmgpu-lower-executable-target)))" %s | FileCheck %s
 
 hal.executable @warp_reduction_dispatch {
-hal.executable.variant public @cuda_nvptx_fb, target = <"cuda", "cuda-nvptx-fb", {target_arch = "sm_60"}> {
+hal.executable.variant public @cuda_nvptx_fb target(<"cuda", "cuda-nvptx-fb", {target_arch = "sm_60"}>) {
   hal.executable.export public @forward_dispatch_0_generic_320x320x3x3 ordinal(0) layout(#hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>) {
   ^bb0(%arg0: !hal.device, %arg1: index, %arg2: index, %arg3: index, %arg4: index):
     %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2, %arg3, %arg4
@@ -30,6 +29,7 @@ hal.executable.variant public @cuda_nvptx_fb, target = <"cuda", "cuda-nvptx-fb",
 
 // CHECK-LABEL: hal.executable.export public @forward_dispatch_0_generic_320x320x3x3
 //     CHECK:     workgroup_size = [3 : index, 3 : index, 7 : index]}
-// CHECK-DAG:     %[[C14720:.*]] = arith.constant 14720 : index
-// CHECK-DAG:     %[[C1:.*]] = arith.constant 1 : index
-//     CHECK:     hal.return %[[C14720]], %[[C1]], %[[C1]] : index, index, index
+// CHECK-DAG:     %[[C46:.+]] = arith.constant 46 : index
+// CHECK-DAG:     %[[C320:.+]] = arith.constant 320 : index
+// CHECK-DAG:     %[[C1:.+]] = arith.constant 1 : index
+//     CHECK:     hal.return %[[C46]], %[[C320]], %[[C1]] : index, index, index

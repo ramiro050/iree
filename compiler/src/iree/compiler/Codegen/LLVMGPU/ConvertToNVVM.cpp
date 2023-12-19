@@ -34,8 +34,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 
@@ -119,6 +118,10 @@ struct ConvertToNVVMPass : public ConvertToNVVMBase<ConvertToNVVMPass> {
           vector::VectorTransformsOptions().setVectorTransformsOptions(
               vector::VectorContractLowering::OuterProduct));
       vector::populateVectorMaskOpLoweringPatterns(patterns);
+      // We currently always use 64 bit indices, thus ensure the bit width of
+      // the mask compare is consistent.
+      vector::populateVectorMaskMaterializationPatterns(
+          patterns, /*force32BitVectorIndices=*/false);
       vector::populateVectorShapeCastLoweringPatterns(patterns);
       // TODO: doubtful that the "default" does what one want here, it is likely
       // better to use something else.
@@ -182,11 +185,10 @@ struct ConvertToNVVMPass : public ConvertToNVVMBase<ConvertToNVVMPass> {
   }
 };
 
-} // anonymous namespace
+} // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToNVVMPass() {
   return std::make_unique<ConvertToNVVMPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

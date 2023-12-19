@@ -10,8 +10,8 @@
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-namespace mlir {
-namespace iree_compiler {
+
+namespace mlir::iree_compiler {
 
 static constexpr int32_t kNumGPUDims = 3;
 static constexpr int32_t kWarpSize = 32;
@@ -77,10 +77,11 @@ void propagateSharedMemoryCopy(func::FuncOp funcOp);
 /// Inserts barriers before and after shared memory copy.
 void insertBarriersAroundSharedMemoryCopy(func::FuncOp funcOp);
 
-/// Emit reduction across a group for a given input.
+/// Emit reduction across a group for a given input. Emits `gpu.shuffle`
+/// based reduction only when `expandSubgroupReduce` is set.
 Value emitGPUGroupReduction(Location loc, OpBuilder &builder, Value input,
                             vector::CombiningKind kind, uint32_t size,
-                            const int warpSize);
+                            int warpSize, bool expandSubgroupReduce);
 
 /// Return the native size of an operation used in contraction calculation.
 // TODO: Make this take HW specific sizes.
@@ -109,7 +110,6 @@ Value unpackToVector(Location loc, OpBuilder &builder, Value packedInput,
 /// using shared memory when CodeGen towards the GPU.
 bool sharedMemTransposeFilter(AffineMap indexMap);
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_UTILS_GPUUTILS_H_

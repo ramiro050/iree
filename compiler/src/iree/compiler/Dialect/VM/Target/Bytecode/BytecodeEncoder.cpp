@@ -14,10 +14,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Diagnostics.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace VM {
+namespace mlir::iree_compiler::IREE::VM {
 
 namespace {
 
@@ -213,6 +210,19 @@ public:
       }
     }
 
+    return success();
+  }
+
+  LogicalResult encodeBranchTable(SuccessorRange caseSuccessors,
+                                  OperandRangeRange caseOperands,
+                                  int baseSuccessorIndex) override {
+    if (failed(writeUint16(caseSuccessors.size())))
+      return failure();
+    for (auto [successor, operands] :
+         llvm::zip_equal(caseSuccessors, caseOperands)) {
+      if (failed(encodeBranch(successor, operands, ++baseSuccessorIndex)))
+        return failure();
+    }
     return success();
   }
 
@@ -427,7 +437,4 @@ std::optional<EncodedBytecodeFunction> BytecodeEncoder::encodeFunction(
   return result;
 }
 
-} // namespace VM
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::VM

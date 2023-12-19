@@ -25,8 +25,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 
@@ -77,7 +76,7 @@ static bool isMatrixTimesMatrixTransposed(vector::ContractionOp contractionOp) {
     }
     for (int r = 0; r < 2; ++r) {
       int actualMapResult =
-          map.getResults()[r].cast<AffineDimExpr>().getPosition();
+          cast<AffineDimExpr>(map.getResults()[r]).getPosition();
       if (actualMapResult != expectedMapResults[m][r]) {
         return false;
       }
@@ -1179,5 +1178,4 @@ createVectorContractCustomKernelsPass() {
   return std::make_unique<VectorContractCustomKernelsPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

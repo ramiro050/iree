@@ -70,6 +70,11 @@ static llvm::cl::opt<bool> clEnableFusePaddingIntoLinalgProducerOps(
     llvm::cl::desc("Enable fusing tensor.pad ops into Linalg consumer ops."),
     llvm::cl::init(false));
 
+static llvm::cl::opt<bool> clCollapseReductionDims(
+    "iree-flow-collapse-reduction-dims",
+    llvm::cl::desc("Enable collapsing of reduction dims"),
+    llvm::cl::init(false));
+
 static llvm::cl::opt<bool>
     clEnableFuseMultiUse("iree-flow-fuse-multi-use",
                          llvm::cl::desc("Fuse multi-use ops."),
@@ -106,10 +111,7 @@ static llvm::cl::opt<bool> clZeroFillEmptyTensors(
         "Zero fill empty tensors instead of leaving them uninitialized."),
     llvm::cl::init(false));
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Flow {
+namespace mlir::iree_compiler::IREE::Flow {
 
 using FunctionLikeNest = MultiOpNest<func::FuncOp, IREE::Util::InitializerOp>;
 
@@ -127,9 +129,7 @@ void buildFlowTransformPassPipeline(OpPassManager &passManager,
 
   FunctionLikeNest(passManager)
       // Preprocess the input to a form more amenable for fusion
-      .addPass(createRaiseSpecialOps)
       .addPass(createInterchangeGenericOpsPass)
-      .addPass(createCollapseDimsPass)
       .addPass(memref::createResolveShapedTypeResultDimsPass)
       .addPass(mlir::createCanonicalizerPass)
       .addPass(mlir::createCSEPass)
@@ -139,6 +139,7 @@ void buildFlowTransformPassPipeline(OpPassManager &passManager,
       .addPredicatedPass(clDetensoring, mlir::createLinalgDetensorizePass)
       .addPass(mlir::createCanonicalizerPass)
       .addPass(mlir::createCSEPass)
+      .addPredicatedPass(clCollapseReductionDims, createCollapseDimsPass)
       // Split reduction operations into parallel and reduction.
       .addPass(createSplitReductionPass)
       // SplitReductionPass may create reduction dimension that are not the last
@@ -169,22 +170,19 @@ void buildFlowTransformPassPipeline(OpPassManager &passManager,
             clEnableFusePaddingIntoLinalgConsumerOps,
             clEnableFusePaddingIntoLinalgProducerOps});
       })
-      // Collapse dimensions of linalg Ops.
-      .addPass(createCollapseDimensionsPass)
       // Clone all producers into the dispatch region to perpare for being
       // isolated from above. This enables running additional transformations
       // afterwards that would need the full dispatch content but don't want to
       // handle explicit captures as materialized as dispatch workgroup operands
       // and block arguments.
       .addPass(createCloneProducersIntoDispatchRegionsPass)
+      // Collapse dimensions of linalg Ops.
+      .addPass(createCollapseDimensionsPass)
       // Form dispatch region into dispatch workgroups
       .addPass([&]() {
         return createFormDispatchWorkgroupsPass(
             clDispatchGenerateWorkloadRegion);
       })
-      // TODO(#15003): SCF support appears to be insufficient for stream work.
-      // Need to debug the cause.
-      .addPass(IREE::Flow::createTopLevelSCFToCFGPass)
       ////////////////////////////////////////////////////////////////////////
       .addPass(createCaptureDispatchDynamicDimsPass)
       .addPass(mlir::createCanonicalizerPass)
@@ -195,9 +193,15 @@ void buildFlowTransformPassPipeline(OpPassManager &passManager,
         return createInitializeEmptyTensorsPass(clZeroFillEmptyTensors);
       });
 
-  // Module pass to outline the dispatch regions into their own functions
-  // wrapped in executables.
+  // Module pass to outline dispatch regions (and similar ops) into their own
+  // functions wrapped in executables.
+  passManager.addPass(IREE::Flow::createOutlineDispatchExternsPass());
   passManager.addPass(IREE::Flow::createOutlineDispatchRegionsPass());
+
+  // Annotate executables based on their contents.
+  // This is optional but can provide useful information during compilation and
+  // runtime profiling/tracing.
+  passManager.addPass(IREE::Flow::createAnnotateDispatchesPass());
 
   // Trace/break dispatches by ordinal in the specified region. There is a
   // similar version of the pass run both before and after deduplication
@@ -307,7 +311,4 @@ void registerFlowPasses() {
   registerFlowTransformPassPipeline();
 }
 
-} // namespace Flow
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Flow

@@ -10,6 +10,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/IR/DialectImplementation.h"
 
 #define GET_ATTRDEF_CLASSES
@@ -20,8 +21,7 @@ static const char kConfigAttrName[] = "lowering_config";
 static const char kTranslationInfoAttrName[] = "translation_info";
 static const char kCompilationInfoAttrName[] = "compilation_info";
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Returns an `ArrayAttr` where each element is an `IntegerAttr` of 64-bit
 /// integer type whose values is obtained from `values`.
@@ -33,8 +33,9 @@ static ArrayAttr getIndexArrayAttr(MLIRContext *context,
       }));
 }
 
-namespace IREE {
-namespace Codegen {
+} // namespace mlir::iree_compiler
+
+namespace mlir::iree_compiler::IREE::Codegen {
 
 //===----------------------------------------------------------------------===//
 // iree_codegen.export_config
@@ -59,11 +60,12 @@ ArrayAttr ExportConfigAttr::getWorkgroupSizeIndexArray() {
 
 TranslationInfoAttr TranslationInfoAttr::get(
     MLIRContext *context, DispatchLoweringPassPipeline passPipeline,
-    unsigned softwarePipelineDepth, unsigned softwarePipelineStoreStage) {
+    unsigned softwarePipelineDepth, unsigned softwarePipelineStoreStage,
+    SymbolRefAttr codegenSpec) {
   auto pipelineAttr =
       DispatchLoweringPassPipelineAttr::get(context, passPipeline);
   return get(context, pipelineAttr, softwarePipelineDepth,
-             softwarePipelineStoreStage);
+             softwarePipelineStoreStage, codegenSpec);
 }
 
 DispatchLoweringPassPipeline
@@ -74,7 +76,8 @@ TranslationInfoAttr::getDispatchLoweringPassPipeline() {
 LogicalResult TranslationInfoAttr::verify(
     function_ref<InFlightDiagnostic()> emitError,
     IREE::Codegen::DispatchLoweringPassPipelineAttr passPipeline,
-    unsigned softwarePipelineDepth, unsigned softwarePipelineStoreStage) {
+    unsigned softwarePipelineDepth, unsigned softwarePipelineStoreStage,
+    SymbolRefAttr codegenSpec) {
   if (!passPipeline) {
     return emitError() << "missing pass pipeline specification";
   }
@@ -82,6 +85,13 @@ LogicalResult TranslationInfoAttr::verify(
   if (passPipelineValue > IREE::Codegen::DispatchLoweringPassPipeline::None) {
     return emitError() << "invalid pass pipeline value : "
                        << stringifyEnum(passPipeline.getValue());
+  }
+  auto tdPassPipeline =
+      IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen;
+  if (codegenSpec && passPipelineValue != tdPassPipeline) {
+    return emitError()
+           << "transform dialect codegen spec requires pass pipeline : "
+           << stringifyEnum(tdPassPipeline);
   }
   return success();
 }
@@ -191,21 +201,33 @@ LogicalResult LoweringConfigTilingLevelAttr::verify(
 // iree_codegen.lowering_config
 //===----------------------------------------------------------------------===//
 
-LoweringConfigAttr LoweringConfigAttr::get(MLIRContext *context,
-                                           TileSizesListTypeRef tileSizes,
-                                           TileSizesListTypeRef tileInterchange,
-                                           ArrayRef<int64_t> nativeVectorSize) {
+LoweringConfigAttr
+LoweringConfigAttr::get(MLIRContext *context, TileSizesListTypeRef tileSizes,
+                        ScalableTileFlagsListTypeRef scalableTileFlags,
+                        TileSizesListTypeRef tileInterchange,
+                        ArrayRef<int64_t> nativeVectorSize) {
   SmallVector<LoweringConfigTilingLevelAttr> tilinglevels;
   for (auto [level, sizes] : llvm::enumerate(tileSizes)) {
     ArrayRef<int64_t> interchange = level < tileInterchange.size()
                                         ? tileInterchange[level]
                                         : ArrayRef<int64_t>{};
+    ArrayRef<bool> scalableFlags = level < scalableTileFlags.size()
+                                       ? scalableTileFlags[level]
+                                       : ArrayRef<bool>{};
     tilinglevels.push_back(LoweringConfigTilingLevelAttr::get(
-        context, sizes, interchange, ArrayRef<bool>{}));
+        context, sizes, interchange, scalableFlags));
   }
   return get(context,
              LoweringConfigTilingLevelsAttr::get(context, tilinglevels),
              nativeVectorSize);
+}
+
+LoweringConfigAttr LoweringConfigAttr::get(MLIRContext *context,
+                                           TileSizesListTypeRef tileSizes,
+                                           TileSizesListTypeRef tileInterchange,
+                                           ArrayRef<int64_t> nativeVectorSize) {
+
+  return get(context, tileSizes, {}, tileInterchange, nativeVectorSize);
 }
 
 TileSizesListType LoweringConfigAttr::getTileSizeVals() {
@@ -220,6 +242,23 @@ SmallVector<int64_t> LoweringConfigAttr::getTileSizeVals(unsigned level) {
   if (level >= levels.size())
     return {};
   return SmallVector<int64_t>(levels[level].getSizes());
+}
+
+ScalableTileFlagsListType LoweringConfigAttr::getScalableTileFlagVals() {
+  ScalableTileFlagsListType scalableFlags;
+  for (auto &level : getTilingLevels())
+    scalableFlags.push_back(SmallVector<bool>(level.getScalableFlags()));
+  return scalableFlags;
+}
+
+SmallVector<bool> LoweringConfigAttr::getScalableTileFlagVals(unsigned level) {
+  auto levels = getTilingLevels();
+  if (level >= levels.size())
+    return {};
+  SmallVector<bool> scalableFlags(levels[level].getScalableFlags());
+  // Extend the scalable flags with `false` to match the length of the sizes.
+  scalableFlags.resize(levels[level].getSizes().size());
+  return scalableFlags;
 }
 
 SmallVector<int64_t>
@@ -262,7 +301,8 @@ LogicalResult CompilationInfoAttr::verify(
   if (failed(TranslationInfoAttr::verify(
           emitError, translationInfo.getPassPipeline(),
           translationInfo.getSoftwarePipelineDepth(),
-          translationInfo.getSoftwarePipelineStoreStage()))) {
+          translationInfo.getSoftwarePipelineStoreStage(),
+          translationInfo.getCodegenSpec()))) {
     return failure();
   }
   return success();
@@ -279,8 +319,9 @@ void IREECodegenDialect::initializeCodegenAttrs() {
       >();
 }
 
-} // namespace Codegen
-} // namespace IREE
+} // namespace mlir::iree_compiler::IREE::Codegen
+
+namespace mlir::iree_compiler {
 
 //===----------------------------------------------------------------------===//
 // Helpers for getting/setting iree_codegen.translation_info attribute on the
@@ -291,6 +332,32 @@ IREE::Codegen::TranslationInfoAttr
 getTranslationInfo(IREE::HAL::ExecutableExportOp exportOp) {
   return exportOp->getAttrOfType<IREE::Codegen::TranslationInfoAttr>(
       kTranslationInfoAttrName);
+}
+
+std::optional<IREE::Codegen::TranslationInfoAttr>
+getIdenticalTranslationInfo(IREE::HAL::ExecutableVariantOp variantOp) {
+  ModuleOp moduleOp = variantOp.getInnerModule();
+  if (!moduleOp) {
+    return std::nullopt;
+  }
+
+  std::optional<IREE::Codegen::TranslationInfoAttr> translationInfo;
+  for (auto exportOp : variantOp.getExportOps()) {
+    IREE::Codegen::TranslationInfoAttr currTranslationInfo =
+        getTranslationInfo(exportOp);
+    if (!currTranslationInfo) {
+      continue;
+    }
+    if (!translationInfo) {
+      translationInfo = currTranslationInfo;
+      continue;
+    }
+    if (currTranslationInfo != translationInfo.value()) {
+      return std::nullopt;
+    }
+  }
+
+  return translationInfo;
 }
 
 SmallVector<int64_t> getWorkgroupSize(IREE::HAL::ExecutableExportOp exportOp) {
@@ -405,5 +472,4 @@ void eraseCompilationInfo(Operation *op) {
   op->removeAttr(kCompilationInfoAttrName);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

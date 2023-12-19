@@ -12,8 +12,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/ValueBoundsOpInterface.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// If a value is defined by `%dim = affine_max(0, %src)` kind of op return
 /// `%src` otherwise return `%dim`.
@@ -24,10 +23,10 @@ static Value skipAffineMaxZero(Value dim) {
   if (!affineMax)
     return dim;
   for (AffineExpr expr : affineMax.getMap().getResults()) {
-    if (auto cst = expr.dyn_cast<AffineConstantExpr>()) {
+    if (auto cst = dyn_cast<AffineConstantExpr>(expr)) {
       if (cst.getValue() == 0)
         continue;
-    } else if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+    } else if (auto symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
       if (symExpr.getPosition() == 0)
         continue;
     }
@@ -43,7 +42,7 @@ static LogicalResult padAlloc(MLIRContext *context, memref::AllocOp allocOp) {
   SmallVector<OpFoldResult> sizes;
   size_t dynamicDimIdx = 0;
   for (int64_t &dimSize : shape) {
-    if (dimSize != ShapedType::kDynamic) {
+    if (!ShapedType::isDynamic(dimSize)) {
       sizes.push_back(rewriter.getIndexAttr(dimSize));
       continue;
     }
@@ -97,5 +96,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createPadDynamicAlloc() {
   return std::make_unique<PadDynamicAllocPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

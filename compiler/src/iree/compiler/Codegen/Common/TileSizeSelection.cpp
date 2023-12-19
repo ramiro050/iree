@@ -8,8 +8,7 @@
 
 using mlir::iree_compiler::IREE::Codegen::LoweringConfigAttr;
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 TilingConfig::TilingConfig(IREE::Codegen::LoweringConfigAttr lc)
     : loweringConfig(lc) {
@@ -27,7 +26,8 @@ TilingConfig::TilingConfig(IREE::Codegen::LoweringConfigAttr lc)
   //   3. [[distribution], [vector-common-parallel], [vector-reduction],
   //       [vector-inner-parallel]]
   //   4. [[distribution], [cache-parallel], [cache-reduction],
-  //       [vector-parallel], [vector-reduction]]
+  //       [vector-common-parallel], [vector-reduction],
+  //       [vector-inner-parallel]]
   int numTileLevels = loweringConfig.getTilingLevels().size();
   switch (numTileLevels) {
   case 4:
@@ -54,24 +54,42 @@ TilingConfig::TilingConfig(IREE::Codegen::LoweringConfigAttr lc)
 
 /// Returns the tile sizes of all the vector dimensions, including parallel
 /// and reduction dimensions.
-SmallVector<int64_t> TilingConfig::getVectorTileSizes() {
+SizesAndScalableFlags TilingConfig::getVectorTileSizes() {
   unsigned numDims = getNumDimensions();
   SmallVector<int64_t> vectorSizes(numDims, 0);
-  SmallVector<int64_t> parallelCommonSizes = getVectorCommonParallelSizes();
-  SmallVector<int64_t> reductionSizes = getVectorReductionSizes();
-  SmallVector<int64_t> parallelInnerSizes = getVectorInnerParallelSizes();
-  for (int i = 0; i < numDims; ++i) {
-    unsigned nonZeroCnt = llvm::count_if(
-        ArrayRef<int64_t>{parallelCommonSizes[i], reductionSizes[i],
-                          parallelInnerSizes[i]},
-        [](auto v) { return v != 0; });
-    assert(nonZeroCnt <= 1 && "expected one tile size at most to be non-zero");
-    (void)nonZeroCnt;
-    vectorSizes[i] =
-        parallelCommonSizes[i] ^ reductionSizes[i] ^ parallelInnerSizes[i];
+  SmallVector<bool> scalableFlags(numDims, false);
+  auto [parallelCommonSizes, parallelCommonScalableFlags] =
+      getVectorCommonParallelSizes();
+  auto [reductionSizes, reductionScalableFlags] = getVectorReductionSizes();
+  SizesAndScalableFlags parallelInnerTiles;
+  if (hasVectorInnerParallelLevel()) {
+    parallelInnerTiles = getVectorInnerParallelSizes();
   }
 
-  return vectorSizes;
+  for (int i = 0; i < numDims; ++i) {
+    SmallVector<bool> dimSizes;
+    dimSizes.push_back(!!parallelCommonSizes[i] ||
+                       parallelCommonScalableFlags[i]);
+    dimSizes.push_back(!!reductionSizes[i] || reductionScalableFlags[i]);
+    if (hasVectorInnerParallelLevel())
+      dimSizes.push_back(!!parallelInnerTiles.first[i] ||
+                         parallelInnerTiles.second[i]);
+
+    unsigned nonZeroCnt = llvm::count(dimSizes, true);
+    assert(nonZeroCnt <= 1 && "expected one tile size at most to be non-zero");
+    (void)nonZeroCnt;
+
+    vectorSizes[i] = parallelCommonSizes[i] ^ reductionSizes[i];
+    if (hasVectorInnerParallelLevel())
+      vectorSizes[i] ^= parallelInnerTiles.first[i];
+
+    scalableFlags[i] =
+        parallelCommonScalableFlags[i] || reductionScalableFlags[i];
+    if (hasVectorInnerParallelLevel())
+      scalableFlags[i] |= parallelInnerTiles.second[i];
+  }
+
+  return std::make_pair(vectorSizes, scalableFlags);
 }
 
 /// Returns a list with the tiling levels that can be fused for this
@@ -87,9 +105,9 @@ SmallVector<int64_t> TilingConfig::getFusableLevels() {
     // Distribution + vector common parallel levels + vector inner parallel
     // levels.
     return {0, 1, 3};
-  case 5:
+  case 6:
     // Distribution + cache parallel levels.
-    return {0, 1};
+    return {0, 1, 3, 5};
   default:
     llvm_unreachable("Unexpected number of tiling levels");
   }
@@ -104,5 +122,4 @@ unsigned TilingConfig::getActualLevel(TilingLevel level) {
   return actualLevel;
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

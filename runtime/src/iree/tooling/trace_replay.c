@@ -176,8 +176,8 @@ static iree_status_t iree_trace_replay_load_builtin_module(
     IREE_RETURN_IF_ERROR(iree_trace_replay_create_device(
         replay, device_node, replay->host_allocator, &replay->device));
     IREE_RETURN_IF_ERROR(iree_hal_module_create(
-        replay->instance, replay->device, IREE_HAL_MODULE_FLAG_NONE,
-        replay->host_allocator, &module));
+        replay->instance, /*device_count=*/1, &replay->device,
+        IREE_HAL_MODULE_FLAG_NONE, replay->host_allocator, &module));
   }
   if (!module) {
     return iree_make_status(
@@ -349,6 +349,9 @@ static void iree_trace_replay_write_element(
     case IREE_HAL_ELEMENT_TYPE_FLOAT_16:
       *(uint16_t*)dst = iree_math_f32_to_f16((float)value);
       break;
+    case IREE_HAL_ELEMENT_TYPE_BFLOAT_16:
+      *(uint16_t*)dst = iree_math_f32_to_bf16((float)value);
+      break;
     IREE_TRACE_REPLAY_WRITE_ELEMENT_CASE(FLOAT_32, float)
     IREE_TRACE_REPLAY_WRITE_ELEMENT_CASE(FLOAT_64, double)
     // clang-format on
@@ -367,23 +370,10 @@ static uint32_t iree_tree_replay_pseudorandom_uint32(uint32_t* state) {
   return *state;
 }
 
-// Returns a random uint8_t in the range of [0, UCHAR_MAX].
-static uint8_t iree_trace_replay_pseudorandom_uint8(uint32_t* state) {
-  // return the second-least-signicant out of the 4 bytes of state. it avoids
-  // some mild issues with the least-significant and most-significant bytes.
-  return iree_tree_replay_pseudorandom_uint32(state) >> 8;
-}
-
 // Returns a random uint32_t in the range [0, range).
 static inline uint32_t iree_trace_replay_pseudorandom_range(uint32_t* state,
                                                             uint32_t range) {
   return iree_tree_replay_pseudorandom_uint32(state) % range;
-}
-
-// Returns a random double in the range of [0, 1.0).
-static double iree_trace_replay_pseudorandom_double(uint32_t* state) {
-  const double inv_modulus = 1.0 / IREE_PRNG_MODULUS;
-  return iree_tree_replay_pseudorandom_uint32(state) * inv_modulus;
 }
 
 // Get minimum and maximum for integer-valued uniform distribution.
@@ -404,6 +394,10 @@ static void iree_trace_replay_get_min_max_for_element_type(
     case IREE_HAL_ELEMENT_TYPE_FLOAT_16:
       *min = -4;
       *max = +4;
+      break;
+    case IREE_HAL_ELEMENT_TYPE_BFLOAT_16:
+      *min = -2;
+      *max = +2;
       break;
     case IREE_HAL_ELEMENT_TYPE_UINT_16:
       *min = 0;

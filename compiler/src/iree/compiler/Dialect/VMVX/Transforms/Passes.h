@@ -15,14 +15,15 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace VMVX {
+namespace mlir::iree_compiler::IREE::VMVX {
 
 //===----------------------------------------------------------------------===//
 // Helpers
 //===----------------------------------------------------------------------===//
+
+// Adds a set of passes to the given pass manager that configure the required
+// VMVX transforms and tiling parameters.
+void buildVMVXConfigurationPassPipeline(OpPassManager &passManager);
 
 // Adds a set of passes to the given pass manager that run the required VMVX
 // transforms in the canonical order.
@@ -32,6 +33,7 @@ namespace VMVX {
 //
 // The expected usage is:
 //   <run conversion from TF/HLO/etc to flow>
+//   buildVMVXConfigurationPassPipeline & run
 //   buildVMVXTransformPassPipeline & run
 //   <serialize VM module>
 void buildVMVXTransformPassPipeline(OpPassManager &passManager);
@@ -55,9 +57,6 @@ std::unique_ptr<OperationPass<>> createResolveBufferDescriptorsPass();
 
 void registerVMVXPasses();
 
-} // namespace VMVX
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::VMVX
 
 #endif // IREE_COMPILER_DIALECT_VMVX_TRANSFORMS_PASSES_H_

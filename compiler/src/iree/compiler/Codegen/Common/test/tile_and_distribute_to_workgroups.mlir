@@ -17,7 +17,7 @@
 }>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @matmul_tensors {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_arm_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_arm_64_) {
     hal.executable.export public @matmul_tensors layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3
@@ -116,7 +116,7 @@ hal.executable private @matmul_tensors {
 #map1 = affine_map<(d0, d1) -> (d1)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @add {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @add layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2
@@ -190,7 +190,7 @@ hal.executable private @add {
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @add4D {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @add4D layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 :index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4
@@ -270,7 +270,7 @@ hal.executable private @add4D {
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @add_distribute4D {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @add_distribute4D layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 :index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4
@@ -391,7 +391,7 @@ hal.executable private @add_distribute4D {
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @add_distribute4D_zero_tile_size {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @add_distribute4D_zero_tile_size layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 :index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4
@@ -465,7 +465,7 @@ hal.executable private @add_distribute4D_zero_tile_size {
   target_triple = "aarch64-none-elf"}>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @batch_matmul_tensors {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_arm_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_arm_64_) {
     hal.executable.export public @batch_matmul_tensors layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4
@@ -536,7 +536,7 @@ hal.executable private @batch_matmul_tensors {
 #executable_target_system_elf_x86_64_ = #hal.executable.target<"llvm-cpu", "system-elf-x86_64">
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @preset_config_matmul_tensors {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @preset_config layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -600,7 +600,7 @@ hal.executable private @preset_config_matmul_tensors {
 #executable_target_system_elf_x86_64_ = #hal.executable.target<"llvm-cpu", "system-elf-x86_64">
 #translation = #iree_codegen.translation_info<CPUBufferOpsTileAndVectorize>
 hal.executable public @copy_op {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @copy_op layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3: index, %arg4 : index, %arg5: index, %arg6 : index, %arg7: index, %arg8 : index, %arg9: index, %arg10: index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10
@@ -701,7 +701,7 @@ hal.executable public @copy_op {
 #executable_target_system_elf_x86_64_ = #hal.executable.target<"llvm-cpu", "system-elf-x86_64">
 #translation = #iree_codegen.translation_info<CPUDefault>
 hal.executable private @static_1d_fft_stage2 {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @static_1d_fft_stage2 layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -720,7 +720,7 @@ hal.executable private @static_1d_fft_stage2 {
             : !flow.dispatch.tensor<readwrite:tensor<32xf32>> -> tensor<32xf32>
         %3 = flow.dispatch.tensor.load %1, offsets = [0], sizes = [32], strides = [1]
             : !flow.dispatch.tensor<readwrite:tensor<32xf32>> -> tensor<32xf32>
-        %4:2 = iree_linalg_ext.fft {__internal_linalg_transform__ = "workgroup", lowering_config = #config}
+        %4:2 = iree_linalg_ext.fft {lowering_config = #config}
             ins(%c2, %cst, %cst_0 : index, tensor<2xf32>, tensor<2xf32>) outs(%2, %3 : tensor<32xf32>, tensor<32xf32>) : tensor<32xf32>, tensor<32xf32>
         flow.dispatch.tensor.store %4#0, %0, offsets = [0], sizes = [32], strides = [1]
             : tensor<32xf32> -> !flow.dispatch.tensor<readwrite:tensor<32xf32>>
@@ -756,7 +756,7 @@ hal.executable private @static_1d_fft_stage2 {
 #executable_target_system_elf_x86_64_ = #hal.executable.target<"llvm-cpu", "system-elf-x86_64">
 #translation = #iree_codegen.translation_info<CPUDefault>
 hal.executable private @static_3d_fft_stage3 {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @static_3d_fft_stage3 layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -813,7 +813,7 @@ hal.executable private @static_3d_fft_stage3 {
 #map3 = affine_map<(d0, d1, d2) -> (d0, d1)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @outs_fusion {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @outs_fusion_fn layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3
@@ -897,7 +897,7 @@ hal.executable private @outs_fusion {
   target_triple = "x86_64-unknown-linux-gnu"}>
 #translation = #iree_codegen.translation_info<CPUDefault>
 hal.executable private @conv {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @conv layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 : index, %arg5 : index, %arg6 : index, %arg7 : index, %arg8 : index, %arg9 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9
@@ -987,7 +987,7 @@ hal.executable private @conv {
   target_triple = "x86_64-unknown-linux-gnu"}>
 #translation = #iree_codegen.translation_info<CPUDefault>
 hal.executable private @conv_static {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @conv_static layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 : index, %arg5 : index, %arg6 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2, %arg3, %arg4, %arg5, %arg6
@@ -1062,7 +1062,7 @@ hal.executable private @conv_static {
 #map1 = affine_map<(d0, d1) -> (d0, d1)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @generic_static {
-  hal.executable.variant public @system_elf_x86_64, target = #executable_target_system_elf_x86_64_ {
+  hal.executable.variant public @system_elf_x86_64 target(#executable_target_system_elf_x86_64_) {
     hal.executable.export public @generic_static layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -1133,7 +1133,7 @@ hal.executable private @generic_static {
   target_triple = "aarch64-none-linux-android30"}>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @matmul_static {
-  hal.executable.variant public @system_elf_arm_64, target = #executable_target_system_elf_arm_64_ {
+  hal.executable.variant public @system_elf_arm_64 target(#executable_target_system_elf_arm_64_) {
     hal.executable.export public @matmul_static layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -1190,7 +1190,7 @@ hal.executable private @matmul_static {
   target_triple = "aarch64-none-linux-android30"}>
 #translation = #iree_codegen.translation_info<CPUDefault>
 hal.executable private @restrict_num_workgroups {
-  hal.executable.variant public @system_elf_arm_64, target = #executable_target_system_elf_arm_64_ {
+  hal.executable.variant public @system_elf_arm_64 target(#executable_target_system_elf_arm_64_) {
     hal.executable.export public @restrict_num_workgroups layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -1250,7 +1250,7 @@ hal.executable private @restrict_num_workgroups {
 #map2 = affine_map<(d0) -> (d0)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @reduction {
-  hal.executable.variant public @reduction, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @reduction target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @reduction ordinal(0) layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -1320,7 +1320,7 @@ hal.executable private @reduction {
   target_triple = "x86_64-none-elf"}>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @gemm_unit_N {
-  hal.executable.variant public @embedded_elf_x86_64, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @embedded_elf_x86_64 target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @gemm_unit_N ordinal(0) layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2
@@ -1392,7 +1392,7 @@ hal.executable private @gemm_unit_N {
   target_triple = "x86_64-none-elf"}>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @gemm_unit_M_unit_N {
-  hal.executable.variant public @embedded_elf_x86_64, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @embedded_elf_x86_64 target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @gemm_unit_M_unit_N ordinal(0) layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -1452,7 +1452,7 @@ hal.executable private @gemm_unit_M_unit_N {
 #map = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d0, d1, d2, d3, d4, d5, d6, d7)>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @generic_unit_dims {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @generic_unit_dims layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index, %arg4 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4
@@ -1528,7 +1528,7 @@ hal.executable private @generic_unit_dims {
 #map1 = affine_map<(d0) -> ()>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @reduce_to_scalar {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @reduce_to_scalar layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1
@@ -1588,7 +1588,7 @@ hal.executable private @reduce_to_scalar {
 #map = affine_map<() -> ()>
 #translation = #iree_codegen.translation_info<CPUDefault>
 hal.executable private @scalar {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @scalar layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -1645,7 +1645,7 @@ hal.executable private @scalar {
 }>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @rank_reduced_slice {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_arm_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_arm_64_) {
     hal.executable.export public @rank_reduced_slice layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1
@@ -1713,7 +1713,7 @@ hal.executable private @rank_reduced_slice {
   target_triple = "x86_64-unknown-linux-gnu"}>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @matmul_interchange {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_x86_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_x86_64_) {
     hal.executable.export public @matmul_interchange layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3
@@ -1772,7 +1772,7 @@ hal.executable private @matmul_interchange {
 // -----
 
 hal.executable private @no_compute {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @no_compute ordinal(0) layout(#hal.pipeline.layout<push_constants = 5, sets = [<0, bindings = [<0, storage_buffer>, <1, storage_buffer>]>]>) attributes {translation_info = #iree_codegen.translation_info<CPUDefault>} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2: index, %arg3: index, %arg4 : index, %arg5 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice %arg1, %arg2, %arg3, %arg4, %arg5
@@ -1813,7 +1813,7 @@ hal.executable private @no_compute {
 // -----
 
 hal.executable private @tile_multiuse_producer {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf_x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf_x86_64", {}>) {
     hal.executable.export public @tile_multiuse_producer ordinal(0) layout (#hal.pipeline.layout<
       push_constants = 0, sets = [<0, bindings = [
           <0, storage_buffer, ReadOnly>, <1, storage_buffer>, <2, storage_buffer>, <3, storage_buffer>]>]>)
@@ -1910,7 +1910,7 @@ hal.executable private @tile_multiuse_producer {
 // -----
 
 hal.executable private @no_tile {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @no_tile ordinal(0) layout(#hal.pipeline.layout<
         push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer, ReadOnly>, <2, storage_buffer>, <3, storage_buffer>]>]>)
         attributes {translation_info = #iree_codegen.translation_info<CPUDefault>} {
@@ -1949,7 +1949,7 @@ hal.executable private @no_tile {
 // -----
 
 hal.executable private @pack_lowering {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @gemm_lhs_pack ordinal(0)
         layout(#hal.pipeline.layout<push_constants = 0,
             sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
@@ -1989,7 +1989,7 @@ hal.executable private @pack_lowering {
 // -----
 
 hal.executable private @pack_lowering {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @gemm_rhs_transpose_pack ordinal(0)
         layout(#hal.pipeline.layout<push_constants = 0,
             sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
@@ -2029,7 +2029,7 @@ hal.executable private @pack_lowering {
 // -----
 
 hal.executable private @clone_index_computations {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @clone_index_computations ordinal(0) layout(
         #hal.pipeline.layout<push_constants = 4, sets = [
             <0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
@@ -2092,7 +2092,7 @@ hal.executable private @clone_index_computations {
 // -----
 
 hal.executable private @dynamic_unpack {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @dynamic_unpack ordinal(0) layout(
         #hal.pipeline.layout<push_constants = 4, sets = [
             <0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
@@ -2138,7 +2138,7 @@ hal.executable private @dynamic_unpack {
 // -----
 
 hal.executable private @dynamic_unpack_dynamic_tile {
-  hal.executable.variant public @embedded_elf_x86_64, target = <"llvm-cpu", "embedded-elf-x86_64", {}> {
+  hal.executable.variant public @embedded_elf_x86_64 target(<"llvm-cpu", "embedded-elf-x86_64", {}>) {
     hal.executable.export public @dynamic_unpack_dynamic_tile ordinal(0) layout(
         #hal.pipeline.layout<push_constants = 4, sets = [
             <0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
@@ -2186,7 +2186,7 @@ hal.executable private @dynamic_unpack_dynamic_tile {
 // -----
 
 hal.executable private @unpack_elem {
-  hal.executable.variant public @embedded_elf_arm_64, target = <"llvm-cpu", "embedded-elf-arm_64", {}> {
+  hal.executable.variant public @embedded_elf_arm_64 target(<"llvm-cpu", "embedded-elf-arm_64", {}>) {
     hal.executable.export public @unpack_elem ordinal(0) layout(
         #hal.pipeline.layout<push_constants = 0, sets = [
             <0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
@@ -2224,7 +2224,7 @@ hal.executable private @unpack_elem {
 // -----
 
 hal.executable private @dynamic_unpack_fusion {
-  hal.executable.variant public @vmvx_bytecode_fb, target = <"vmvx", "vmvx-bytecode-fb", {ukernels = true}> {
+  hal.executable.variant public @vmvx_bytecode_fb target(<"vmvx", "vmvx-bytecode-fb", {ukernels = true}>) {
     hal.executable.export public @dynamic_unpack_fusion ordinal(0) layout(#hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>) attributes {translation_info = #iree_codegen.translation_info<VMVXDefault>} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -2242,7 +2242,7 @@ hal.executable private @dynamic_unpack_fusion {
         %cst = arith.constant dense<[-918, -4433, 87, -234, -21393, 7738, 529, -8835, -16817, -375, -199, 572, 5082, 15569, -186, 4955]> : tensor<16xi32>
         %c12544 = arith.constant 12544 : index
         %c16 = arith.constant 16 : index
-        %0:2 = iree_codegen.query_tile_sizes tensor<12544x16xi32, #iree_linalg_ext.encoding<user = MATMUL_I8I8I32, role = RESULT>> -> index, index
+        %0:2 = iree_codegen.query_tile_sizes tensor<12544x16xi32, #iree_linalg_ext.encoding<user = MATMUL, role = RESULT, element_types = [i8, i8, i32]>> -> index, index
         %1 = affine.apply affine_map<()[s0] -> (12544 ceildiv s0)>()[%0#0]
         %2 = affine.apply affine_map<()[s0] -> (16 ceildiv s0)>()[%0#1]
         %3 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c200960) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<?x?x?x?xi32>>{%1, %2, %0#0, %0#1}
@@ -2281,7 +2281,7 @@ hal.executable private @dynamic_unpack_fusion {
 // -----
 
 hal.executable private @elem_pack {
-  hal.executable.variant public @embedded_elf_arm_64, target = <"llvm-cpu", "embedded-elf-arm_64", {cpu = "generic", cpu_features = "", data_layout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128", native_vector_size = 16 : index, target_triple = "aarch64-none-elf"}> {
+  hal.executable.variant public @embedded_elf_arm_64 target(<"llvm-cpu", "embedded-elf-arm_64", {cpu = "generic", cpu_features = "", data_layout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128", native_vector_size = 16 : index, target_triple = "aarch64-none-elf"}>) {
     hal.executable.export public @elem_pack ordinal(0) layout(#hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer, ReadOnly>, <2, storage_buffer, ReadOnly>, <3, storage_buffer>, <4, storage_buffer>, <5, storage_buffer>]>]>) attributes {translation_info = #iree_codegen.translation_info<CPUDataTiling>} {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -2345,7 +2345,7 @@ hal.executable private @elem_pack {
 // -----
 
 hal.executable private @scatter {
-  hal.executable.variant public @cuda_nvptx_fb, target = <"cuda", "cuda-nvptx-fb", {target_arch = "sm_60"}> {
+  hal.executable.variant public @cuda_nvptx_fb target(<"cuda", "cuda-nvptx-fb", {target_arch = "sm_60"}>) {
     hal.executable.export public @scatter ordinal(0)
     layout(#hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>)
     attributes {translation_info = #iree_codegen.translation_info<LLVMGPUDistribute>, workgroup_size = [1 : index, 1 : index, 1 : index]} {
@@ -2384,7 +2384,7 @@ hal.executable private @scatter {
 
 module attributes {hal.device.targets = [#hal.device.target<"cuda", {executable_targets = [#hal.executable.target<"cuda", "cuda-nvptx-fb", {target_arch = "sm_86"}>], legacy_sync}>]} {
   hal.executable private @collapse_workgroups_dispatch_dispatch_0 {
-    hal.executable.variant public @cuda_nvptx_fb, target = <"cuda", "cuda-nvptx-fb", {target_arch = "sm_86"}> {
+    hal.executable.variant public @cuda_nvptx_fb target(<"cuda", "cuda-nvptx-fb", {target_arch = "sm_86"}>) {
       hal.executable.export public @collapse_workgroups_dispatch_dispatch_0_generic_1024x128x16x64 ordinal(0) layout(#hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer>]>]>) {
       ^bb0(%arg0: !hal.device):
         %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -2410,7 +2410,7 @@ module attributes {hal.device.targets = [#hal.device.target<"cuda", {executable_
 }
 
 // CHECKW-LABEL:   hal.executable private @collapse_workgroups_dispatch_dispatch_0 {
-//       CHECKW:           hal.executable.variant public @cuda_nvptx_fb, target = #executable_target_cuda_nvptx_fb {
+//       CHECKW:           hal.executable.variant public @cuda_nvptx_fb
 //       CHECKW:             hal.executable.export public @collapse_workgroups_dispatch_dispatch_0_generic_1024x128x16x64 ordinal(0) layout(#pipeline_layout) {
 //       CHECKW:             ^bb0(%[[ARG0:.*]]: !hal.device):
 //   CHECKW-DAG:               %[[C2097152:.*]] = arith.constant 2097152 : index
@@ -2436,7 +2436,7 @@ module attributes {hal.device.targets = [#hal.device.target<"cuda", {executable_
 }>
 #translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
 hal.executable private @matmul_tensors {
-  hal.executable.variant public @llvm, target = #executable_target_embedded_elf_arm_64_ {
+  hal.executable.variant public @llvm target(#executable_target_embedded_elf_arm_64_) {
     hal.executable.export public @matmul_tensor_count_from_dag_root layout(#pipeline_layout) attributes {translation_info = #translation} {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2 : index, %arg3 : index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2, %arg3
@@ -2484,3 +2484,55 @@ hal.executable private @matmul_tensors {
 //  CHECK-DAG:    %[[D0:.+]] = affine.apply #[[MAP0]]()[%[[WORKLOAD_M]]]
 //  CHECK-DAG:    %[[D1:.+]] = affine.apply #[[MAP0]]()[%[[WORKLOAD_N]]]
 //      CHECK:    hal.return %[[D1]], %[[D0]], %[[C1]] : index, index, index
+
+// -----
+
+#config = #iree_codegen.lowering_config<tile_sizes = [[64, 64, 0], [16, 4, 0], [0, 0, 64]]>
+#executable_target_embedded_elf_arm_64_ = #hal.executable.target<"llvm-cpu", "embedded-elf-arm_64", {data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128", native_vector_size = 16 : index, target_triple = "aarch64-none-elf"}>
+#map = affine_map<()[s0] -> (s0 ceildiv 64)>
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer>, <1, storage_buffer>, <2, storage_buffer>, <3, storage_buffer>]>]>
+#translation = #iree_codegen.translation_info<CPUDoubleTilingExpert>
+module {
+  hal.executable private @matmul_tensors {
+    hal.executable.variant public @llvm target(#executable_target_embedded_elf_arm_64_) {
+      hal.executable.export public @matmul_already_distributed layout(#pipeline_layout) attributes {translation_info = #translation} {
+      ^bb0(%arg0: !hal.device, %arg1: index, %arg2: index, %arg3: index):
+        %c1 = arith.constant 1 : index
+        %0 = affine.apply #map()[%arg1]
+        %1 = affine.apply #map()[%arg2]
+        hal.return %1, %0, %c1 : index, index, index
+      }
+      builtin.module {
+        func.func @matmul_already_distributed() {
+          %0 = hal.interface.constant.load[0] : index
+          %1 = hal.interface.constant.load[1] : index
+          %2 = hal.interface.constant.load[2] : index
+          %3 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) : !flow.dispatch.tensor<readonly:tensor<?x?xf32>>{%0, %2}
+          %4 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) : !flow.dispatch.tensor<readonly:tensor<?x?xf32>>{%2, %1}
+          %5 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) : !flow.dispatch.tensor<readonly:tensor<?x?xf32>>{%0, %1}
+          %6 = hal.interface.binding.subspan set(0) binding(3) type(storage_buffer) : !flow.dispatch.tensor<writeonly:tensor<?x?xf32>>{%0, %1}
+          %workgroup_id_x = hal.interface.workgroup.id[0] : index
+          %workgroup_count_x = hal.interface.workgroup.count[0] : index
+          %workgroup_id_y = hal.interface.workgroup.id[1] : index
+          %workgroup_count_y = hal.interface.workgroup.count[1] : index
+          %13 = flow.dispatch.tensor.load %3, offsets = [%workgroup_id_y, 0], sizes = [%0, %2], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<?x?xf32>>{%0, %2} -> tensor<?x?xf32>
+          %14 = flow.dispatch.tensor.load %4, offsets = [0, %workgroup_id_x], sizes = [%2, %1], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<?x?xf32>>{%2, %1} -> tensor<?x?xf32>
+          %15 = flow.dispatch.tensor.load %5, offsets = [%workgroup_id_y, %workgroup_id_x], sizes = [%0, %1], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<?x?xf32>>{%0, %1} -> tensor<?x?xf32>
+          %16 = linalg.matmul {lowering_config = #config} ins(%13, %14 : tensor<?x?xf32>, tensor<?x?xf32>) outs(%15 : tensor<?x?xf32>) -> tensor<?x?xf32>
+          flow.dispatch.tensor.store %16, %6, offsets = [%workgroup_id_y, %workgroup_id_x], sizes = [%0, %1], strides = [1, 1] : tensor<?x?xf32> -> !flow.dispatch.tensor<writeonly:tensor<?x?xf32>>{%0, %1}
+          return
+        }
+      }
+    }
+  }
+}
+
+// CHECK-LABEL: func.func @matmul_already_distributed
+// CHECK:         %[[LHS_BINDING:.+]] = hal.interface.binding.subspan set(0) binding(0)
+// CHECK:         %[[RHS_BINDING:.+]] = hal.interface.binding.subspan set(0) binding(1)
+// CHECK:         %[[OUT_BINDING:.+]] = hal.interface.binding.subspan set(0) binding(3)
+// CHECK-NOT:     scf.for
+// CHECK:         %[[LHS:.+]] = flow.dispatch.tensor.load %[[LHS_BINDING]], offsets = [%workgroup_id_y, 0]
+// CHECK:         %[[RHS:.+]] = flow.dispatch.tensor.load %[[RHS_BINDING]], offsets = [0, %workgroup_id_x]
+// CHECK:         %[[MATMUL:.+]] = linalg.matmul {{.*}} ins(%[[LHS]], %[[RHS]]
+// CHECK-DAG:     flow.dispatch.tensor.store %[[MATMUL]], %[[OUT_BINDING]]

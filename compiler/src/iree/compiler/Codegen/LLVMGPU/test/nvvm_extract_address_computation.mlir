@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-linalg-to-nvvm-pipeline)))' -split-input-file %s -o - | FileCheck %s
+// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-llvmgpu-configuration-pipeline, iree-codegen-linalg-to-nvvm-pipeline)))' -split-input-file %s -o - | FileCheck %s
 
 // This test checks that the lowering of nvvm includes the extraction
 // and optimization of address computations.
@@ -76,7 +76,7 @@
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer, ReadOnly>, <2, storage_buffer>]>]>
 #device_target_cuda = #hal.device.target<"cuda", {executable_targets = [#executable_target_cuda_nvptx_fb], legacy_sync}>
 hal.executable private @matmul_dispatch_0 {
-  hal.executable.variant public @cuda_nvptx_fb, target = #executable_target_cuda_nvptx_fb {
+  hal.executable.variant public @cuda_nvptx_fb target(#executable_target_cuda_nvptx_fb) {
     hal.executable.export public @matmul_dispatch_0_matmul_2560x2560x2560 ordinal(0) layout(#pipeline_layout) {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2: index, %arg3: index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2, %arg3

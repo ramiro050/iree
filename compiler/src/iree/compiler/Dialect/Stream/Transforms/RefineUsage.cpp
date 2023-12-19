@@ -9,7 +9,6 @@
 #include "iree/compiler/Dialect/Stream/Analysis/ResourceUsage.h"
 #include "iree/compiler/Dialect/Stream/IR/StreamDialect.h"
 #include "iree/compiler/Dialect/Stream/IR/StreamOps.h"
-#include "iree/compiler/Dialect/Stream/Transforms/PassDetail.h"
 #include "iree/compiler/Dialect/Stream/Transforms/Passes.h"
 #include "iree/compiler/Dialect/Util/IR/UtilDialect.h"
 #include "iree/compiler/Dialect/Util/IR/UtilOps.h"
@@ -27,10 +26,11 @@
 
 #define DEBUG_TYPE "iree-stream-refine-usage"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Stream {
+namespace mlir::iree_compiler::IREE::Stream {
+
+#define GEN_PASS_DEF_REFINEUSAGEPASS
+#include "iree/compiler/Dialect/Stream/Transforms/Passes.h.inc"
+
 namespace {
 
 //===----------------------------------------------------------------------===//
@@ -303,6 +303,22 @@ struct ApplyScfIfOp : public UsageRefinementPattern<mlir::scf::IfOp> {
   }
 };
 
+struct ApplyScfForOp : public UsageRefinementPattern<mlir::scf::ForOp> {
+  using UsageRefinementPattern<mlir::scf::ForOp>::UsageRefinementPattern;
+  LogicalResult matchAndRewrite(mlir::scf::ForOp op,
+                                PatternRewriter &rewriter) const override {
+    bool didChange = this->applyRegionTransitions(op, rewriter);
+    for (unsigned i = 0; i < op->getNumResults(); ++i) {
+      auto result = op->getResult(i);
+      if (llvm::isa<IREE::Stream::ResourceType>(result.getType())) {
+        if (this->applyResultTransition(op, result, rewriter))
+          didChange |= true;
+      }
+    }
+    return success(didChange);
+  }
+};
+
 struct ApplyScfWhileOp : public UsageRefinementPattern<mlir::scf::WhileOp> {
   using UsageRefinementPattern<mlir::scf::WhileOp>::UsageRefinementPattern;
   LogicalResult matchAndRewrite(mlir::scf::WhileOp op,
@@ -390,9 +406,8 @@ static void insertUsageRefinementPatterns(MLIRContext *context,
                                           ResourceUsageAnalysis &analysis,
                                           RewritePatternSet &patterns) {
   // NOTE: only ops that return values or contain regions need to be handled.
-  patterns
-      .insert<ApplyInitializerOp, ApplyFuncOp, ApplyScfIfOp, ApplyScfWhileOp>(
-          context, analysis);
+  patterns.insert<ApplyInitializerOp, ApplyFuncOp, ApplyScfForOp, ApplyScfIfOp,
+                  ApplyScfWhileOp>(context, analysis);
   patterns.insert<ApplyGenericOp<IREE::Util::OptimizationBarrierOp>,
                   ApplyGenericOp<mlir::arith::SelectOp>,
                   ApplyGenericOp<mlir::func::CallOp>,
@@ -425,20 +440,11 @@ static void insertUsageRefinementPatterns(MLIRContext *context,
 }
 
 //===----------------------------------------------------------------------===//
-// -iree-stream-refine-usage
+// --iree-stream-refine-usage
 //===----------------------------------------------------------------------===//
 
-class RefineUsagePass : public RefineUsageBase<RefineUsagePass> {
-public:
-  RefineUsagePass() = default;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::func::FuncDialect>();
-    registry.insert<mlir::scf::SCFDialect>();
-    registry.insert<IREE::Stream::StreamDialect>();
-    registry.insert<IREE::Util::UtilDialect>();
-  }
-
+struct RefineUsagePass
+    : public IREE::Stream::impl::RefineUsagePassBase<RefineUsagePass> {
   void runOnOperation() override {
     auto moduleOp = getOperation();
     if (moduleOp.getBody()->empty())
@@ -466,11 +472,4 @@ public:
 
 } // namespace
 
-std::unique_ptr<OperationPass<mlir::ModuleOp>> createRefineUsagePass() {
-  return std::make_unique<RefineUsagePass>();
-}
-
-} // namespace Stream
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Stream

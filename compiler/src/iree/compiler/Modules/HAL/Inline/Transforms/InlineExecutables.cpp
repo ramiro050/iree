@@ -22,10 +22,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace HAL {
+namespace mlir::iree_compiler::IREE::HAL {
 namespace Inline {
 
 class InlineExecutablesPass
@@ -100,7 +97,7 @@ public:
     auto indexType = innerModuleBuilder.getIndexType();
     auto i32Type = innerModuleBuilder.getI32Type();
     auto bufferType = innerModuleBuilder.getType<IREE::Util::BufferType>();
-    for (auto exportOp : variantOp.getOps<IREE::HAL::ExecutableExportOp>()) {
+    for (auto exportOp : variantOp.getExportOps()) {
       // Build dispatch function signature that the stream.cmd.dispatch ops will
       // map to.
       auto layoutAttr = exportOp.getLayout();
@@ -430,7 +427,4 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> createInlineExecutablesPass() {
 }
 
 } // namespace Inline
-} // namespace HAL
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::HAL

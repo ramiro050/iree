@@ -19,8 +19,12 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
+/// Function to register all dependent dialects for Transform Dialect based
+/// passes.
+void registerTransformDialectTranslationDependentDialects(
+    DialectRegistry &registry);
 
 /// Passes that are done on all backends before target-specific code-generation
 /// kicks in.
@@ -94,6 +98,10 @@ std::unique_ptr<Pass> createDecomposeLinalgGenericPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createDecomposePackUnPackOpsPass(bool tileOuterToOne = false);
 
+/// Creates a pass to convert the softmax op into a sequence of linalg generic
+/// ops.
+std::unique_ptr<Pass> createDecomposeSoftmaxPass();
+
 /// A pass to eliminate tensor.empty ops that could turn into allocations
 /// during bufferization.
 std::unique_ptr<OperationPass<ModuleOp>> createEliminateEmptyTensorsPass();
@@ -136,12 +144,18 @@ std::unique_ptr<OperationPass<>> createFoldTensorExtractOpPass();
 /// scf.for.
 std::unique_ptr<OperationPass<func::FuncOp>> createForOpCanonicalizationPass();
 
+std::unique_ptr<OperationPass<func::FuncOp>>
+createMaterializeEncodingIntoNopPass();
+
 /// Fuses tensor.pad ops into their consumer ops' tiled loop nests.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createFuseTensorPadWithConsumerPass();
 
 struct GenericVectorizationPassOptions {
   bool enableVectorMasking = false;
+  // Controls whether the op lowering configuration (if present) should be used
+  // to specify the masked vector sizes.
+  bool useConfiguredVectorSizes = true;
   bool vectorizePadding = false;
   bool vectorizeGatherAccesses = false;
   // The flag controls whether it touches the structure generated from tiling,
@@ -149,6 +163,9 @@ struct GenericVectorizationPassOptions {
   bool enableCleanup = true;
   // Enable conversion for reduction ops to contraction ops.
   bool generateContract = true;
+  // Enable folding casting ops into contraction ops. Note that the resulting
+  // mixed-type contraction ops are only handled by certain backends.
+  bool foldCastIntoContract = false;
   // Max vector size allowed to avoid creating large vectors.
   int64_t maxVectorSize = std::numeric_limits<int64_t>::max();
 };
@@ -162,6 +179,9 @@ createHoistRedundantVectorTransfersPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>>
 createHoistStaticallyBoundAllocationsPass();
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+createHoistUnrolledVectorExtractInsertSlicePass();
 
 /// Pass to perform linalg on tensor bufferization. The function passed into
 /// the pass through the `allocationFn` argument is invoked whenever a new
@@ -188,6 +208,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createLowerUKernelOpsToCallsPass();
 
 /// Creates a pass to convert memref.copy to linalg op.
 std::unique_ptr<OperationPass<func::FuncOp>> createMemrefCopyToLinalgPass();
+
+/// Extracts lowering configs and translation info from user configs.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createMaterializeUserConfigsPass();
 
 /// Pass to optimize vector transfer_read and transfer_write.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -234,10 +258,7 @@ createTileAndDistributeToWorkgroupsPass(
 
 /// Create an IREE-specific Transform dialect interpreter pass with all
 /// registrations necessary for IREE.
-std::unique_ptr<Pass> createTransformDialectInterpreterPass(
-    llvm::StringRef transformFileName = llvm::StringRef(),
-    llvm::StringRef debugPayloadRootTag = llvm::StringRef(),
-    llvm::StringRef debugTransformRootTag = llvm::StringRef());
+std::unique_ptr<Pass> createTransformDialectInterpreterPass();
 
 /// Pass to propagate type to avoid generating load/stores of illegal types.
 std::unique_ptr<OperationPass<func::FuncOp>> createTypePropagationPass();
@@ -284,7 +305,6 @@ void populateVectorTransferTensorSliceTransforms(RewritePatternSet &patterns,
 /// Method to register all passes.
 void registerCodegenCommonPasses();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_COMMON_PASSES_H_

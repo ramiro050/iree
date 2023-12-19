@@ -20,8 +20,7 @@
 
 #define DEBUG_TYPE "iree-codegen-remove-trivial-loops"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Converts a symbolic GPU processor dimension to its numeric one.
 static unsigned dimToIndex(gpu::Dimension dim) {
@@ -91,18 +90,6 @@ getWorkgroupRange(Value processorValue, SmallVectorImpl<Value> & /*dims*/,
   return std::nullopt;
 }
 
-/// Return true if the given tiled loop is distributed to workgroups.
-static bool isWorkgroupLoop(const LoopTilingAndDistributionInfo &info) {
-  auto forOp = cast<scf::ForOp>(info.loop);
-  Operation *lbOp = forOp.getLowerBound().getDefiningOp();
-  if (isa<IREE::HAL::InterfaceWorkgroupIDOp>(lbOp))
-    return true;
-  auto applyOp = dyn_cast<affine::AffineApplyOp>(lbOp);
-  return applyOp && llvm::any_of(applyOp.getMapOperands(), [](Value operand) {
-           return operand.getDefiningOp<IREE::HAL::InterfaceWorkgroupIDOp>();
-         });
-}
-
 static LogicalResult removeOneTripTiledLoops(func::FuncOp funcOp,
                                              ArrayRef<int64_t> workgroupSize,
                                              ArrayRef<int64_t> numWorkgroups) {
@@ -143,5 +130,4 @@ createRemoveSingleIterationLoopPass() {
   return std::make_unique<RemoveSingleIterationLoopPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

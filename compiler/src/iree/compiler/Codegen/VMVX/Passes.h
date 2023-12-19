@@ -16,8 +16,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 //------------------------------------------------------------------------------
 // VMVX passes
@@ -31,6 +30,20 @@ std::unique_ptr<Pass> createVMVXLowerLinalgMicrokernelsPass();
 /// operations are VMVX specific.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createVMVXMaterializeEncodingPass();
+
+/// Pass to select a lowering strategy for a hal.executable.variant operation.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createVMVXSelectLoweringStrategyPass();
+
+/// Pass to lower the module an hal.executable.variant operation to external
+/// dialect.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createVMVXLowerExecutableTargetPass();
+
+/// Populates the passes to lower to tiled/distributed/bufferized ops,
+/// suitable for library call dispatch and lowering to loops.
+void addVMVXDefaultPassPipeline(OpPassManager &passManager,
+                                bool enableUKernels);
 
 //----------------------------------------------------------------------------//
 // VMVX Linking Passes and Pipelines
@@ -52,7 +65,6 @@ void buildVMVXLinkingPassPipeline(OpPassManager &passManager);
 
 void registerCodegenVMVXPasses();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_VMVX_PASSES_H_

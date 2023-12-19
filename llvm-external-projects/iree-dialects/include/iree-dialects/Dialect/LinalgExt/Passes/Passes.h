@@ -47,8 +47,8 @@ struct LinalgTransformationFilter {
 
   LinalgTransformationFilter(LinalgTransformationFilter &&) = default;
   LinalgTransformationFilter(const LinalgTransformationFilter &) = default;
-  LogicalResult checkAndNotify(PatternRewriter &rewriter, Operation *op) const;
-  void replaceLinalgTransformationFilter(PatternRewriter &rewriter,
+  LogicalResult checkAndNotify(RewriterBase &rewriter, Operation *op) const;
+  void replaceLinalgTransformationFilter(RewriterBase &rewriter,
                                          Operation *op) const;
   bool hasReplacementFilter(Operation *op) const;
 
@@ -88,56 +88,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingInterfaceTilingPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLinalgExtToLoopsPass();
 
-/// TypeConverter to use for materializing the encoding.
-struct MaterializeEncodingTypeConverter : public TypeConverter {
-  MaterializeEncodingTypeConverter(MaterializeEncodingFn fn);
-  const MaterializeEncodingFn &getMaterializeEncodingFn() const {
-    return materializeEncodingFn;
-  }
-
-private:
-  const MaterializeEncodingFn materializeEncodingFn;
-};
-
-/// Conversion target to use for for materializing the encoding.
-struct MaterializeEncodingConversionTarget : public ConversionTarget {
-  MaterializeEncodingConversionTarget(MLIRContext &context);
-};
-
-/// Base class for patterns that materialize encoding.
-template <typename OpTy>
-class OpMaterializeEncodingPattern : public OpConversionPattern<OpTy> {
-public:
-  OpMaterializeEncodingPattern(
-      MLIRContext *context,
-      const MaterializeEncodingTypeConverter &typeConverter,
-      MaterializeEncodingValueFn materializeEncodingValueFn = {},
-      PatternBenefit benefit = 1)
-      : OpConversionPattern<OpTy>(typeConverter, context, benefit),
-        materializeEncodingValueFn(materializeEncodingValueFn) {}
-
-protected:
-  const MaterializeEncodingValueFn materializeEncodingValueFn;
-};
-
-/// Method to populate the patterns to convert operations that have operands
-/// with tensor encodings into ops that materialize the layout specified by the
-/// encoding, as well as ops that perform the computation on the materialized
-/// layout. For now these hard-code a fixed way the lowering is encoded, but the
-/// encoding can be made backend specific. Also initializes the
-/// `conversionTarget` and `typeConverter`.
-void populateMaterializeEncodingPatterns(
-    RewritePatternSet &patterns,
-    MaterializeEncodingConversionTarget &conversionTarget,
-    MaterializeEncodingTypeConverter &typeConverter,
-    MaterializeEncodingValueFn materializeEncodingValueFn = {});
-
-void populateMaterializeUpperBoundTileSizePatterns(
-    RewritePatternSet &patterns, MaterializeEncodingFn materializeEncodingFn);
-
-/// Pass to apply patterns specified by `populateMaterializeEncodingPass`.
-std::unique_ptr<OperationPass<func::FuncOp>> createMaterializeEncodingPass();
-
 std::unique_ptr<OperationPass<>> createPadContractionToBlockSizePass();
 
 /// Function signature to control reduction splitting. This returns the split
@@ -167,14 +117,18 @@ createTileAndDecomposeWinogradTransformPass();
 // tranformation.
 std::unique_ptr<Pass> createConvertConv2DToWinogradPass();
 
-// Creates a pass to convert the softmax op into a sequence of
-// linalg generic ops.
-std::unique_ptr<Pass> createDecomposeSoftmaxPass();
+// Transform dialect version of tile and decompose attention wrapper.
+void tileAndDecomposeAttention(IREE::LinalgExt::AttentionOp attnOp,
+                               SmallVectorImpl<Operation *> &ops,
+                               RewriterBase &rewriter, bool onlyTile = false);
 
-// Transform dialect version of tile and decompose attention
-SmallVector<Operation *>
-tileAndDecomposeAttention(IREE::LinalgExt::AttentionOp attnOp,
-                          RewriterBase &rewriter);
+IREE::LinalgExt::AttentionOp tileAttention(IREE::LinalgExt::AttentionOp attnOp,
+                                           SmallVectorImpl<Operation *> &ops,
+                                           RewriterBase &rewriter);
+
+void decomposeTiledAttention(IREE::LinalgExt::AttentionOp tiledAttnOp,
+                             SmallVectorImpl<Operation *> &ops,
+                             RewriterBase &rewriter);
 
 // Creates a pass to convert the attention op into a sequence of
 // linalg ops.
@@ -186,55 +140,6 @@ const StringLiteral kSplitReductionDepthMarker = "__split_reduction_depth__";
 //===---------------------------------------------------------------------===//
 // Codegen Strategy passes that are moved into IREE.
 //===---------------------------------------------------------------------===//
-using VectorSizeComputationFunction =
-    std::function<SmallVector<int64_t>(linalg::LinalgOp, ArrayRef<int64_t>)>;
-struct LinalgVectorizationOptions {
-  /// Enable vector masking during vectorization.
-  bool enableVectorMasking = false;
-
-  LinalgVectorizationOptions &setEnableVectorMasking(bool val) {
-    enableVectorMasking = val;
-    return *this;
-  }
-
-  /// Canonical vector sizes for the vector iteration space (i.e., vectorization
-  /// factors). They are optional for input code with full static shapes.
-  SmallVector<int64_t> canonicalVectorSizes;
-
-  LinalgVectorizationOptions &
-  setCanonicalVectorSizes(ArrayRef<int64_t> vecSizes) {
-    assert(canonicalVectorSizes.empty() &&
-           "Canonical vector sizes are already set");
-    canonicalVectorSizes.append(vecSizes.begin(), vecSizes.end());
-    return *this;
-  }
-
-  /// Computation function that returns the vector sizes to vectorize a given
-  /// Linalg operation and the canonical vector sizes of the iteration space.
-  VectorSizeComputationFunction vectorSizeComputationFunction = nullptr;
-
-  LinalgVectorizationOptions &
-  setVectorSizeComputationFunction(VectorSizeComputationFunction fun) {
-    vectorSizeComputationFunction = std::move(fun);
-    return *this;
-  }
-
-  /// Enable vectorization of padding operations.
-  bool vectorizePadding = false;
-
-  LinalgVectorizationOptions &setVectorizePadding(bool vecPad) {
-    vectorizePadding = vecPad;
-    return *this;
-  }
-
-  /// Enable vectorization of gather accesses.
-  bool vectorizeGatherAccesses = false;
-
-  LinalgVectorizationOptions &setVectorizeGatherAccesses(bool vecGather) {
-    vectorizeGatherAccesses = vecGather;
-    return *this;
-  }
-};
 
 void registerPasses();
 

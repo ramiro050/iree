@@ -44,9 +44,9 @@ class CheckTest : public ::testing::Test {
     }
     IREE_ASSERT_OK(iree_hal_driver_create_default_device(
         hal_driver, iree_allocator_system(), &device_));
-    IREE_ASSERT_OK(
-        iree_hal_module_create(instance_, device_, IREE_HAL_MODULE_FLAG_NONE,
-                               iree_allocator_system(), &hal_module_));
+    IREE_ASSERT_OK(iree_hal_module_create(
+        instance_, /*device_count=*/1, &device_, IREE_HAL_MODULE_FLAG_NONE,
+        iree_allocator_system(), &hal_module_));
     iree_hal_driver_release(hal_driver);
 
     IREE_ASSERT_OK(iree_check_module_create(instance_, iree_allocator_system(),
@@ -197,8 +197,11 @@ class CheckTest : public ::testing::Test {
     IREE_RETURN_IF_ERROR(
         iree_vm_list_create(iree_vm_make_undefined_type_def(), args.size(),
                             iree_allocator_system(), &inputs_));
+    iree_vm_ref_t device_ref = iree_hal_device_retain_ref(device_);
+    IREE_RETURN_IF_ERROR(
+        iree_vm_list_push_ref_move(inputs_.get(), &device_ref));
     for (auto& arg : args) {
-      iree_vm_ref_t arg_ref = iree_hal_buffer_view_move_ref(arg.get());
+      iree_vm_ref_t arg_ref = iree_hal_buffer_view_retain_ref(arg.get());
       IREE_RETURN_IF_ERROR(iree_vm_list_push_ref_move(inputs_.get(), &arg_ref));
     }
     return Invoke(function_name);

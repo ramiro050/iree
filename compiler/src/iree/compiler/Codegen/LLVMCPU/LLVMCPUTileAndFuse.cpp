@@ -6,6 +6,7 @@
 
 #include "iree/compiler/Codegen/LLVMCPU/PassDetail.h"
 #include "iree/compiler/Codegen/LLVMCPU/Passes.h"
+#include "iree/compiler/Codegen/LLVMCPU/Utils.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -22,8 +23,8 @@
 
 #define DEBUG_TYPE "iree-llvmcpu-tile-and-fuse"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
 
 /// Starting from `op` walk all operands backwards to find all
@@ -85,7 +86,8 @@ struct LLVMCPUTileAndFusePass : LLVMCPUTileAndFuseBase<LLVMCPUTileAndFusePass> {
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect, affine::AffineDialect,
-                    linalg::LinalgDialect, scf::SCFDialect>();
+                    linalg::LinalgDialect, scf::SCFDialect,
+                    vector::VectorDialect>();
   }
 
   void runOnOperation() override;
@@ -235,8 +237,10 @@ void LLVMCPUTileAndFusePass::runOnOperation() {
   // If `consumerOp` has its own lowering config, we prefer using it. Otherwise,
   // fallback to find a lowering_config from other operations.
   SmallVector<int64_t> tileSizes;
+  SmallVector<bool> tileScalableFlags;
   if (auto loweringConfig = getLoweringConfig(consumerOp)) {
     tileSizes = loweringConfig.getTileSizeVals(tilingLevel);
+    tileScalableFlags = loweringConfig.getScalableTileFlagVals(tilingLevel);
   } else {
     FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
         getLoweringConfig(getComputeOps(funcOp));
@@ -246,24 +250,21 @@ void LLVMCPUTileAndFusePass::runOnOperation() {
       return;
     }
     tileSizes = maybeLoweringConfig.value().getTileSizeVals(tilingLevel);
+    tileScalableFlags =
+        maybeLoweringConfig.value().getScalableTileFlagVals(tilingLevel);
   }
-
-  IRRewriter rewriter(context);
-  int numLoops = consumerOp.getLoopIteratorTypes().size();
-  if (numLoops > tileSizes.size()) {
-    tileSizes.append(numLoops - tileSizes.size(), 0);
-  }
-  tileSizes.resize(numLoops);
 
   if (llvm::all_of(tileSizes, [&](int64_t size) { return size == 0; })) {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, all zeros -----\n");
     return;
   }
 
-  SmallVector<OpFoldResult> tileSizesOfr =
-      getAsIndexOpFoldResult(rewriter.getContext(), tileSizes);
+  scf::SCFTilingOptions options{};
+  setSCFTileSizes(options, consumerOp, std::move(tileSizes),
+                  std::move(tileScalableFlags));
+
+  IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
-  auto options = scf::SCFTilingOptions().setTileSizes(tileSizesOfr);
   if (failed(applyTileAndFuse(rewriter, consumerOp, dominanceInfo, options))) {
     LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
     return signalPassFailure();
@@ -290,5 +291,4 @@ createLLVMCPUTileAndFusePass(int64_t tilingLevel) {
   return std::make_unique<LLVMCPUTileAndFusePass>(tilingLevel);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

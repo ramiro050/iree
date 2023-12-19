@@ -57,6 +57,8 @@ iree_runtime_cc_library(
         "task_impl.h",
         "topology.c",
         "topology_cpuinfo.c",
+        "topology_darwin.c",
+        "topology_emscripten.c",
         "topology_win32.c",
         "worker.c",
         "worker.h",
@@ -142,6 +144,7 @@ iree_runtime_cc_test(
     deps = [
         ":task",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:threading",
         "//runtime/src/iree/task/testing:test_util",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

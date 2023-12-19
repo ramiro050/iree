@@ -22,6 +22,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -34,8 +35,8 @@
 
 #define DEBUG_TYPE "iree-spirv-emulate-bf16"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
 
 class Bf16EmulationConverter : public TypeConverter {
@@ -53,6 +54,18 @@ public:
 
     addConversion([this](ShapedType ty) -> std::optional<Type> {
       return ty.clone(convertType(ty.getElementType()));
+    });
+
+    addConversion([this](FunctionType ty) -> std::optional<Type> {
+      SmallVector<Type> inputs;
+      if (failed(convertTypes(ty.getInputs(), inputs)))
+        return std::nullopt;
+
+      SmallVector<Type> results;
+      if (failed(convertTypes(ty.getResults(), results)))
+        return std::nullopt;
+
+      return FunctionType::get(ty.getContext(), inputs, results);
     });
   }
 };
@@ -217,6 +230,10 @@ std::optional<Value> materializeArithBitcast(OpBuilder &builder, Type resultTy,
 
 static void populateIreeBf16EmulationPatterns(RewritePatternSet &patterns,
                                               TypeConverter &typeConverter) {
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 typeConverter);
+  populateCallOpTypeConversionPattern(patterns, typeConverter);
+  populateReturnOpTypeConversionPattern(patterns, typeConverter);
   patterns.add<GenericTypeConversionPattern, ConvertHalInterfaceBindingSubspan,
                ConvertMemRefAlloc, ConvertMemRefLoad, ConvertMemRefStore>(
       typeConverter, patterns.getContext());
@@ -244,20 +261,39 @@ struct ConvertBf16ToUInt16BuffersPass final
     // Run the main emulation pass.
     {
       ConversionTarget target(*ctx);
-      target.addLegalOp<func::ReturnOp>();
       target.addDynamicallyLegalOp<func::FuncOp>([&typeConverter](
                                                      Operation *op) {
         return typeConverter.isLegal(cast<func::FuncOp>(op).getFunctionType());
       });
-      target.addDynamicallyLegalDialect<
-          arith::ArithDialect, func::FuncDialect, IREE::HAL::HALDialect,
-          memref::MemRefDialect, scf::SCFDialect, vector::VectorDialect>(
+      target.addDynamicallyLegalDialect<arith::ArithDialect, func::FuncDialect,
+                                        IREE::HAL::HALDialect,
+                                        memref::MemRefDialect, scf::SCFDialect>(
           [&typeConverter](Operation *op) {
             bool legal = typeConverter.isLegal(op);
             LLVM_DEBUG(if (!legal) llvm::dbgs()
                        << "Bf16Emulation: illegal op: " << *op << "\n");
             return legal;
           });
+
+      // Support the list of all vector operations that do not perform numerical
+      // changes:
+      target.addDynamicallyLegalOp<
+          vector::BroadcastOp, vector::ShuffleOp, vector::ExtractElementOp,
+          vector::ExtractOp, vector::InsertElementOp, vector::InsertOp,
+          vector::ScalableInsertOp, vector::ScalableExtractOp,
+          vector::InsertStridedSliceOp, vector::ReshapeOp,
+          vector::ExtractStridedSliceOp, vector::TransferReadOp,
+          vector::TransferWriteOp, vector::LoadOp, vector::StoreOp,
+          vector::MaskedLoadOp, vector::MaskedStoreOp, vector::GatherOp,
+          vector::ScatterOp, vector::ExpandLoadOp, vector::CompressStoreOp,
+          vector::ShapeCastOp, vector::ConstantMaskOp, vector::CreateMaskOp,
+          vector::MaskOp, vector::TransposeOp, vector::FlatTransposeOp,
+          vector::SplatOp, vector::YieldOp>([&typeConverter](Operation *op) {
+        bool legal = typeConverter.isLegal(op);
+        LLVM_DEBUG(if (!legal) llvm::dbgs()
+                   << "Bf16Emulation: illegal op: " << *op << "\n");
+        return legal;
+      });
 
       RewritePatternSet patterns(ctx);
       arith::populateExpandBFloat16Patterns(patterns);
@@ -280,5 +316,4 @@ createConvertBf16ToUInt16BuffersPass() {
   return std::make_unique<ConvertBf16ToUInt16BuffersPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

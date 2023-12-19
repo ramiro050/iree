@@ -18,10 +18,7 @@
 IREE_DEFINE_COMPILER_OPTION_FLAGS(
     mlir::iree_compiler::IREE::HAL::TargetOptions);
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace HAL {
+namespace mlir::iree_compiler::IREE::HAL {
 
 void TargetOptions::bindOptions(OptionsBinder &binder) {
   static llvm::cl::OptionCategory halTargetOptionsCategory(
@@ -50,6 +47,8 @@ void TargetOptions::bindOptions(OptionsBinder &binder) {
       llvm::cl::callback([&](const std::string &path) {
         if (executableSourcesPath.empty())
           executableSourcesPath = path;
+        if (executableConfigurationsPath.empty())
+          executableConfigurationsPath = path;
         if (executableBenchmarksPath.empty())
           executableBenchmarksPath = path;
         if (executableIntermediatesPath.empty())
@@ -63,6 +62,14 @@ void TargetOptions::bindOptions(OptionsBinder &binder) {
       "iree-hal-dump-executable-sources-to", executableSourcesPath,
       llvm::cl::desc("Path to write individual hal.executable input "
                      "source listings into (- for stdout)."),
+      llvm::cl::cat(halTargetOptionsCategory));
+
+  binder.opt<std::string>(
+      "iree-hal-dump-executable-configurations-to",
+      executableConfigurationsPath,
+      llvm::cl::desc("Path to write individual hal.executable input source "
+                     "listings into, after translation strategy selection and "
+                     "before starting translation (- for stdout)."),
       llvm::cl::cat(halTargetOptionsCategory));
 
   binder.opt<std::string>(
@@ -100,7 +107,4 @@ void dumpDataToPath(StringRef path, StringRef baseName, StringRef suffix,
   file->keep();
 }
 
-} // namespace HAL
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::HAL

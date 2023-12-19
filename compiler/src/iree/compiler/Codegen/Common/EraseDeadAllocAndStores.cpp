@@ -8,12 +8,14 @@
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
+
 class EraseDeadAllocAndStoresPass
     : public EraseDeadAllocAndStoresBase<EraseDeadAllocAndStoresPass> {
 public:
@@ -27,8 +29,10 @@ public:
 
 void EraseDeadAllocAndStoresPass::runOnOperation() {
   auto funcOp = getOperation();
-  eraseDeadAllocAndStores(funcOp);
+  IRRewriter rewriter(&getContext());
+  memref::eraseDeadAllocAndStores(rewriter, funcOp);
 }
+
 } // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -36,5 +40,4 @@ createEraseDeadAllocAndStoresPass() {
   return std::make_unique<EraseDeadAllocAndStoresPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

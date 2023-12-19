@@ -46,8 +46,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 class ConvertToDestinationPassingStylePass
@@ -516,7 +515,7 @@ struct RemoveCstOutsDependency
     bool modifiedOutput = false;
     Location loc = op.getLoc();
     for (OpOperand &opOperand : op.getDpsInitsMutable()) {
-      DenseElementsAttr attr;
+      ElementsAttr attr;
       if (!matchPattern(opOperand.get(), m_Constant(&attr)))
         continue;
       if (!attr.isSplat())
@@ -668,5 +667,4 @@ createConvertToDestinationPassingStylePass(
       useWARForCooperativeMatrixCodegen);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

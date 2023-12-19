@@ -31,10 +31,10 @@ class CMakePlatform(enum.Enum):
 
 # Compile config used for each CMake system platform.
 PLATFORM_COMPILE_CONFIG_MAP = {
-    CMakePlatform.ANDROID_ARMV8_A: armv8_a_benchmarks.Android_ARMv8_A_Benchmarks.DEFAULT_COMPILE_CONFIG,
+    CMakePlatform.ANDROID_ARMV8_A: armv8_a_benchmarks.Android_ARMv8_A_Benchmarks.DT_UK_COMPILE_CONFIG,
     CMakePlatform.LINUX_RISCV32: riscv_benchmarks.Linux_RV32_Benchmarks.DEFAULT_COMPILE_CONFIG,
     CMakePlatform.LINUX_RISCV64: riscv_benchmarks.Linux_RV64_Benchmarks.DEFAULT_COMPILE_CONFIG,
-    CMakePlatform.LINUX_X86_64: x86_64_benchmarks.Linux_x86_64_Benchmarks.CASCADELAKE_COMPILE_CONFIG,
+    CMakePlatform.LINUX_X86_64: x86_64_benchmarks.Linux_x86_64_Benchmarks.CASCADELAKE_DT_UK_COMPILE_CONFIG,
 }
 
 
@@ -49,9 +49,6 @@ class ModelTestConfig(object):
 
     # Either a string literal or a file path.
     expected_output: str
-    input_data: common_definitions.ModelInputData = (
-        common_definitions.ZEROS_MODEL_INPUT_DATA
-    )
 
     # Platforms to ignore this test.
     unsupported_platforms: List[CMakePlatform] = dataclasses.field(default_factory=list)
@@ -96,7 +93,7 @@ TEST_CONFIGS = [
             tflite_models.DEEPLABV3_FP32
         ),
         execution_config=module_execution_configs.ELF_LOCAL_SYNC_CONFIG,
-        expected_output="deeplab_v3_fp32_input_0_expected_output.npy",
+        expected_output="https://storage.googleapis.com/iree-model-artifacts/deeplab_v3_fp32_input_0_expected_output.npy",
         extra_test_flags=["--expected_f32_threshold=0.001"],
         unsupported_platforms=[
             CMakePlatform.LINUX_RISCV32,

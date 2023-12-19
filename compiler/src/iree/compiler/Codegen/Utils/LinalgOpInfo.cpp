@@ -11,8 +11,7 @@
 
 using namespace mlir::linalg;
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Returns true if `map` is a tranpose. A transpose map is a projected
 /// permutation with or without zeros in results where there exist at least two
@@ -40,10 +39,10 @@ static bool isTransposeMap(AffineMap map) {
   // that are actually transposed by comparing its input position.
   unsigned prevDim = 0;
   for (AffineExpr expr : map.getResults()) {
-    if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+    if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
       // Constant zero expression, guaranteed by 'allowZeroInResults' above.
       continue;
-    } else if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+    } else if (auto dimExpr = dyn_cast<AffineDimExpr>(expr)) {
       if (prevDim > dimExpr.getPosition()) {
         return true;
       }
@@ -125,5 +124,4 @@ void LinalgOpInfo::computeInfo(LinalgOp linalgOp) {
   dynamicTrait = computeDynamicInfo(linalgOp);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

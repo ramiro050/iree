@@ -21,8 +21,8 @@
 
 #define DEBUG_TYPE "iree-llvmcpu-split-reduction"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
 
 /// Make sure that
@@ -196,7 +196,13 @@ void LLVMCPUSplitReductionPass::runOnOperation() {
       continue;
     }
     TilingConfig tilingConfig(maybeLoweringConfig.value());
-    auto reductionSizes = tilingConfig.getVectorReductionSizes();
+    auto [reductionSizes, scalableDims] =
+        tilingConfig.getVectorReductionSizes();
+    if (scalableDims.back()) {
+      LLVM_DEBUG(llvm::dbgs() << "scalable reduction dimensions not yet "
+                                 "supported, skip SplitReduction");
+      continue;
+    }
     if (reductionSizes.empty()) {
       LLVM_DEBUG(llvm::dbgs() << "the list of reduction tiling sizes is empty, "
                                  "skip SplitReduction");
@@ -208,6 +214,7 @@ void LLVMCPUSplitReductionPass::runOnOperation() {
     }
   }
 }
+
 } // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -215,5 +222,5 @@ createLLVMCPUSplitReductionPass(const bool enableFpReductionReordering) {
   return std::make_unique<LLVMCPUSplitReductionPass>(
       enableFpReductionReordering);
 }
-} // namespace iree_compiler
-} // namespace mlir
+
+} // namespace mlir::iree_compiler

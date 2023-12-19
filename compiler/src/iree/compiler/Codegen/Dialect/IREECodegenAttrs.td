@@ -15,18 +15,16 @@ def CPU_Default
     : I32EnumAttrCase<"CPUDefault", 0>;
 def CPU_DoubleTilingExpert
     : I32EnumAttrCase<"CPUDoubleTilingExpert", 1>;
-def CPU_DoubleTilingPadExpert
-    : I32EnumAttrCase<"CPUDoubleTilingPadExpert", 2>;
 def CPU_DoubleTilingPeelingExpert
-    : I32EnumAttrCase<"CPUDoubleTilingPeelingExpert", 3>;
+    : I32EnumAttrCase<"CPUDoubleTilingPeelingExpert", 2>;
 def CPU_ConvTileAndDecomposeExpert
-    : I32EnumAttrCase<"CPUConvTileAndDecomposeExpert", 4>;
+    : I32EnumAttrCase<"CPUConvTileAndDecomposeExpert", 3>;
 def CPU_Mmt4dTilingExpert
-    : I32EnumAttrCase<"Mmt4dTilingExpert", 5>;
+    : I32EnumAttrCase<"Mmt4dTilingExpert", 4>;
 def CPU_BufferOpsTileAndVectorize
-    : I32EnumAttrCase<"CPUBufferOpsTileAndVectorize", 6>;
+    : I32EnumAttrCase<"CPUBufferOpsTileAndVectorize", 5>;
 def CPU_DataTiling
-    : I32EnumAttrCase<"CPUDataTiling", 7>;
+    : I32EnumAttrCase<"CPUDataTiling", 6>;
 
 def LLVMGPU_Default
     : I32EnumAttrCase<"LLVMGPUDefault", 100>;
@@ -76,7 +74,7 @@ def DispatchLoweringPassPipelineEnum : I32EnumAttr<
   "DispatchLoweringPassPipeline",
   "identifier for pass pipeline use to lower dispatch region", [
     // CPU CodeGen pipelines
-    CPU_Default, CPU_DoubleTilingExpert, CPU_DoubleTilingPadExpert,
+    CPU_Default, CPU_DoubleTilingExpert,
     CPU_DoubleTilingPeelingExpert, CPU_ConvTileAndDecomposeExpert,
     CPU_Mmt4dTilingExpert, CPU_BufferOpsTileAndVectorize,
     CPU_DataTiling,
@@ -132,7 +130,8 @@ def IREECodegen_TranslationInfoAttr :
   let assemblyFormat = [{
     `<` `` $passPipeline
     (`pipeline_depth` `=` $softwarePipelineDepth^)?
-    (`store_stage` `=` $softwarePipelineStoreStage^)? `>`
+    (`store_stage` `=` $softwarePipelineStoreStage^)?
+    (`codegen_spec` `=` $codegenSpec^)? `>`
   }];
 
   let parameters = (ins
@@ -141,12 +140,15 @@ def IREECodegen_TranslationInfoAttr :
     OptionalParameter<"unsigned",
         "The software pipeline depth to be used">:$softwarePipelineDepth,
     DefaultValuedParameter<"unsigned", "1",
-        "The software pipeline stage to place stores">:$softwarePipelineStoreStage
+        "The software pipeline stage to place stores">:$softwarePipelineStoreStage,
+    OptionalParameter<"SymbolRefAttr",
+        "The symbol pointing to the transform dialect codegen spec to be used">:$codegenSpec
   );
   let builders = [
     AttrBuilder<(ins "DispatchLoweringPassPipeline":$passPipeline,
         CArg<"unsigned", "0">:$softwarePipelineDepth,
-        CArg<"unsigned", "1">:$softwarePipelineStoreStage)>
+        CArg<"unsigned", "1">:$softwarePipelineStoreStage,
+        CArg<"SymbolRefAttr", "{}">:$codegenSpec)>
   ];
   let extraClassDeclaration = [{
     // Returns the lowering pass pipeline set.
@@ -208,6 +210,10 @@ def IREECodegen_LoweringConfigAttr :
   let builders = [
     AttrBuilder<(ins "TileSizesListTypeRef":$tileSizes,
         CArg<"TileSizesListTypeRef", "{}">:$tileInterchange,
+        CArg<"ArrayRef<int64_t>", "{}">:$nativeVectorSize)>,
+    AttrBuilder<(ins "TileSizesListTypeRef":$tileSizes,
+        "ScalableTileFlagsListTypeRef":$scalableTileFlags,
+        CArg<"TileSizesListTypeRef", "{}">:$tileInterchange,
         CArg<"ArrayRef<int64_t>", "{}">:$nativeVectorSize)>
   ];
   let extraClassDeclaration = [{
@@ -216,6 +222,12 @@ def IREECodegen_LoweringConfigAttr :
 
     // Returns the tile sizes for a level set for the op.
     SmallVector<int64_t> getTileSizeVals(unsigned level);
+
+    // Returns the scalable tile flags for all levels set for the op.
+    ScalableTileFlagsListType getScalableTileFlagVals();
+
+    // Returns the scalable tile flags for a level set for the op.
+    SmallVector<bool> getScalableTileFlagVals(unsigned level);
 
     // Returns the tile interchange for a level set for the op.
     SmallVector<int64_t> getTileInterchangeVals(unsigned level);

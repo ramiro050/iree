@@ -7,6 +7,7 @@
 #include "iree/compiler/Modules/Check/IR/CheckDialect.h"
 
 #include "iree/compiler/Dialect/HAL/Conversion/ConversionDialectInterface.h"
+#include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/VM/Conversion/ConversionDialectInterface.h"
 #include "iree/compiler/Modules/Check/Conversion/ConversionPatterns.h"
 #include "iree/compiler/Modules/Check/IR/CheckOps.h"
@@ -15,10 +16,7 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Check {
+namespace mlir::iree_compiler::IREE::Check {
 
 namespace {
 class CheckToVmConversionInterface : public VMConversionDialectInterface {
@@ -57,6 +55,8 @@ public:
 
 CheckDialect::CheckDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context, TypeID::get<CheckDialect>()) {
+  context->loadDialect<IREE::HAL::HALDialect>();
+
   addInterfaces<CheckToVmConversionInterface>();
   addInterfaces<CheckToHalConversionInterface>();
 #define GET_OP_LIST
@@ -65,7 +65,4 @@ CheckDialect::CheckDialect(MLIRContext *context)
       >();
 }
 
-} // namespace Check
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Check

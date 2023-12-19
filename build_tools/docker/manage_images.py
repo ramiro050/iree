@@ -49,7 +49,7 @@ IMAGES_TO_DEPENDENCIES = {
     "emscripten": ["base"],
     "nvidia": ["base"],
     "riscv": ["base"],
-    "gradle-android": ["base"],
+    "riscv-toolchain-builder": [],
     "frontends": ["android"],
     "shark": [],
     "swiftshader": ["base"],

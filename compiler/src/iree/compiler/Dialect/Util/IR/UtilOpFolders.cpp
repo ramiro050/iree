@@ -25,10 +25,7 @@
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Support/LogicalResult.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Util {
+namespace mlir::iree_compiler::IREE::Util {
 
 //===----------------------------------------------------------------------===//
 // util.cast
@@ -812,8 +809,8 @@ OpFoldResult BufferSizeOp::fold(FoldAdaptor operands) {
   // During A->B->C dialect conversion, the type may not be legal so be
   // defensive.
   auto operand = getOperand();
-  if (auto sizeAwareType = llvm::dyn_cast<IREE::Util::SizeAwareTypeInterface>(
-          operand.getType())) {
+  if (auto sizeAwareType =
+          dyn_cast<IREE::Util::SizeAwareTypeInterface>(operand.getType())) {
     Operation *op = this->getOperation();
     if (auto sizeValue = sizeAwareType.findSizeValue(operand, op->getBlock(),
                                                      Block::iterator(op))) {
@@ -824,11 +821,10 @@ OpFoldResult BufferSizeOp::fold(FoldAdaptor operands) {
   // If the source is a constant then we can calculate that immediately.
   if (auto constantOp = dyn_cast_or_null<IREE::Util::BufferConstantOp>(
           operand.getDefiningOp())) {
-    if (auto attr =
-            llvm::dyn_cast_if_present<IREE::Util::SerializableAttrInterface>(
-                constantOp.getValue())) {
-      return IntegerAttr::get(IndexType::get(attr.getContext()),
-                              attr.getStorageSize());
+    if (auto storageAttr = dyn_cast_if_present<IREE::Util::SizedStorageAttr>(
+            constantOp.getValue())) {
+      return IntegerAttr::get(IndexType::get(storageAttr.getContext()),
+                              storageAttr.getStorageSize());
     }
   }
 
@@ -927,7 +923,4 @@ OpFoldResult BufferLoadOp::fold(FoldAdaptor operands) {
   return {};
 }
 
-} // namespace Util
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Util

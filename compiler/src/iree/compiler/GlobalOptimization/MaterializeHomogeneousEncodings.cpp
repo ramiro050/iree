@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree/compiler/Codegen/Common/CPU/Passes.h"
+#include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "iree/compiler/GlobalOptimization/PassDetail.h"
@@ -17,10 +18,9 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/Passes.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace GlobalOptimization {
+namespace mlir::iree_compiler::GlobalOptimization {
 
 class MaterializeHomogeneousEncodingsPass
     : public MaterializeHomogeneousEncodingsBase<
@@ -32,25 +32,34 @@ public:
     registry.insert<IREE::HAL::HALDialect>();
   }
 
+  void runNopPipeline(ModuleOp &moduleOp) {
+    OpPassManager passManager(moduleOp.getOperationName());
+    passManager.addNestedPass<func::FuncOp>(
+        createMaterializeEncodingIntoNopPass());
+    passManager.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+    if (failed(runPipeline(passManager, moduleOp))) {
+      return signalPassFailure();
+    }
+  }
+
   void runOnOperation() override {
     auto moduleOp = getOperation();
-    auto targetsAttr = moduleOp->getAttrOfType<ArrayAttr>("hal.device.targets");
-    if (!targetsAttr || targetsAttr.size() != 1) {
-      return;
-    }
-    auto deviceTarget = cast<IREE::HAL::DeviceTargetAttr>(targetsAttr[0]);
-    SmallVector<IREE::HAL::ExecutableTargetAttr, 4> executableTargets =
-        deviceTarget.getExecutableTargets();
+    auto executableTargets =
+        IREE::HAL::DeviceTargetAttr::lookupExecutableTargets(moduleOp);
     if (executableTargets.size() != 1) {
+      return runNopPipeline(moduleOp);
+    }
+    // TODO: vmvx has its own logic about supporting dynamic tile
+    // sizes. It is not fully integrated into the pipeline, so we remain the
+    // materialization to the end.
+    auto executableTarget = executableTargets[0];
+    if (executableTarget.getBackend() == "vmvx") {
       return;
     }
-    // TODO(hanchung): Move *CPUMateralize* methods to Codegen/Common. They
-    // could be generalized to other backends (by looking into something like
-    // ExecutableTarget things). Only llvm-cpu backends handle encodings for
-    // now.
-    auto executableTarget = executableTargets[0];
+
+    // Only llvm-cpu backends handle encodings for now, others just go with nop.
     if (executableTarget.getBackend() != "llvm-cpu") {
-      return;
+      return runNopPipeline(moduleOp);
     }
 
     OpPassManager passManager(moduleOp.getOperationName());
@@ -58,7 +67,6 @@ public:
         createCPUMaterializeUpperBoundTileSizePass(executableTargets));
     passManager.addNestedPass<func::FuncOp>(
         createCPUMaterializeEncodingPass(executableTarget));
-
     if (failed(runPipeline(passManager, moduleOp))) {
       return signalPassFailure();
     }
@@ -70,6 +78,4 @@ createMaterializeHomogeneousEncodingsPass() {
   return std::make_unique<MaterializeHomogeneousEncodingsPass>();
 }
 
-} // namespace GlobalOptimization
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::GlobalOptimization

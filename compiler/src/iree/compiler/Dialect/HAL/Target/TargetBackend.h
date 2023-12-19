@@ -14,17 +14,13 @@
 
 #include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
-#include "iree/compiler/Dialect/HAL/Utils/DeviceSwitchBuilder.h"
 #include "iree/compiler/Utils/OptionUtils.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/PassManager.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace HAL {
+namespace mlir::iree_compiler::IREE::HAL {
 
 // TODO(benvanik): remove this and replace with the pass pipeline options.
 // Controls executable translation targets.
@@ -44,8 +40,13 @@ struct TargetOptions {
   // Default path to write executable files into.
   std::string executableFilesPath;
 
-  // A path to write individual executable source listings into.
+  // A path to write individual executable source listings into (before
+  // configuration).
   std::string executableSourcesPath;
+
+  // A path to write individual executable source listings into (after
+  // configuration).
+  std::string executableConfigurationsPath;
 
   // A path to write standalone executable benchmarks into.
   std::string executableBenchmarksPath;
@@ -150,6 +151,53 @@ public:
     return {};
   }
 
+  // Inserts passes used to configure the `hal.executable.variant` op contents
+  // for translation. The pass manager will be nested on `hal.executable` such
+  // that the pipeline will only run on executable contents.
+  //
+  // The primary purpose of this pipeline is to preprocess then annotate all
+  // `hal.executable.variant` ops with the information necessary for
+  // translation. This can include specifying the set of required and/or
+  // irrelevant target features, allowing for an additional deduplication step
+  // when the only difference between two variants is a set of irrelevant
+  // features. As a result, this pipeline is optional.
+  //
+  // The expected input to this pipeline might look like:
+  //   hal.executable @some_executable {
+  //     hal.interface @main_io {
+  //       hal.interface.binding @arg0, set=0, binding=0, ...
+  //       hal.interface.binding @arg1, set=0, binding=1, ...
+  //     }
+  //     hal.executable.variant @target, target="target-backend" {
+  //       hal.executable.export @main interface(@main_io) {
+  //         ordinal = 0 : index
+  //       }
+  //       module {
+  //         func.func @main ...
+  //       }
+  //     }
+  //   }
+  //
+  // As output, structurally the variant should be very similar:
+  //   hal.executable @some_executable {
+  //     hal.interface @main_io {
+  //       hal.interface.binding @arg0, set=0, binding=0, ...
+  //       hal.interface.binding @arg1, set=0, binding=1, ...
+  //     }
+  //     hal.executable.variant @target, target="target-backend" {
+  //       hal.executable.export @main interface(@main_io)
+  //         {attrs = #target_specific_translation_attr<...>} {
+  //         ordinal = 0 : index
+  //       }
+  //       module {
+  //         func.func @main ...
+  //       }
+  //     }
+  //   }
+  virtual void
+  buildConfigurationPassPipeline(IREE::HAL::ExecutableVariantOp variantOp,
+                                 OpPassManager &passManager){};
+
   // Inserts passes used to translate the `hal.executable.variant` op contents.
   // The pass manager will be nested on `hal.executable` such that the pipeline
   // will only run on executable contents.
@@ -169,7 +217,7 @@ public:
   //       hal.executable.export @main interface(@main_io) {
   //         ordinal = 0 : index
   //       }
-  //       module { ... }
+  //       module { ... (annotated for translation) }
   //     }
   //   }
   //
@@ -276,9 +324,6 @@ void dumpDataToPath(StringRef path, StringRef baseName, StringRef suffix,
                            data.size() * sizeof(T)));
 }
 
-} // namespace HAL
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::HAL
 
 #endif // IREE_COMPILER_DIALECT_HAL_TARGET_TARGETBACKEND_H_

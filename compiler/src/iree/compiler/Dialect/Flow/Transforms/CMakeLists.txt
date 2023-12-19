@@ -29,45 +29,34 @@ iree_cc_library(
     "Passes.h.inc"
     "RegionOpUtils.h"
   SRCS
+    "AnnotateDispatches.cpp"
     "CaptureDispatchDynamicDims.cpp"
-    "CleanupNumericNarrowing.cpp"
     "CleanupTensorShapes.cpp"
     "CloneProducersIntoDispatchRegions.cpp"
     "CollapseDimensions.cpp"
     "CollapseReductionDims.cpp"
-    "Convert1X1FilterConv2DToMatmul.cpp"
     "ConvertRegionToWorkgroups.cpp"
     "ConvertToFlow.cpp"
     "DeduplicateExecutables.cpp"
-    "DetachElementwiseFromNamedOps.cpp"
     "DispatchWithTransformDialect.cpp"
     "DumpDispatchGraph.cpp"
-    "EraseUnusedLinalgOperands.cpp"
-    "ExpandTensorShapes.cpp"
     "ExportBenchmarkFuncs.cpp"
     "FoldUnitExtentDims.cpp"
     "FormDispatchRegions.cpp"
     "FormDispatchWorkgroups.cpp"
     "FormScalarDispatches.cpp"
-    "FuseDequantizationMatmul.cpp"
     "FusionOfTensorOps.cpp"
-    "GeneralizeLinalgNamedOps.cpp"
-    "InferNumericNarrowing.cpp"
     "InitializeEmptyTensors.cpp"
     "InjectDispatchTracing.cpp"
     "InsertDispatchDebugTargets.cpp"
     "InterchangeGenericOps.cpp"
     "InterchangeTransposeGenericOps.cpp"
-    "OptimizeNumerics.cpp"
+    "OutlineDispatchExterns.cpp"
     "OutlineDispatchRegions.cpp"
     "PassDetail.h"
     "Passes.cpp"
-    "RaiseSpecialOps.cpp"
     "RegionOpUtils.cpp"
-    "RemoveZeroExtentTensors.cpp"
-    "SetEncoding.cpp"
     "SplitReduction.cpp"
-    "StripSignedness.cpp"
     "TensorPadToTensorInsertSlice.cpp"
     "TopLevelSCFToCFG.cpp"
     "VerifyInputLegality.cpp"
@@ -82,11 +71,11 @@ iree_cc_library(
     IREELinalgTransformDialect
     LLVMSupport
     MLIRAffineDialect
+    MLIRAffineUtils
     MLIRAnalysis
     MLIRArithDialect
     MLIRArithUtils
     MLIRComplexDialect
-    MLIRControlFlowDialect
     MLIRFuncDialect
     MLIRFunctionInterfaces
     MLIRIR
@@ -116,8 +105,6 @@ iree_cc_library(
     iree::compiler::Dialect::Flow::IR
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::Util::Analysis
-    iree::compiler::Dialect::Util::Analysis::Attributes
-    iree::compiler::Dialect::Util::Analysis::DFX
     iree::compiler::Dialect::Util::IR
     iree::compiler::Dialect::Util::Transforms
     iree::compiler::Utils

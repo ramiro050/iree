@@ -20,15 +20,7 @@
 #include "iree/compiler/Preprocessing/Passes.h"
 #include "iree/compiler/Utils/TracingUtils.h"
 
-#ifdef IREE_HAVE_STABLEHLO_INPUT
-#include "iree/compiler/InputConversion/StableHLO/Passes.h"
-#endif // IREE_HAVE_STABLEHLO_INPUT
-#ifdef IREE_HAVE_TOSA_INPUT
-#include "iree/compiler/InputConversion/TOSA/Passes.h"
-#endif // IREE_HAVE_TOSA_INPUT
-
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 void buildIREEPrecompileTransformPassPipeline(
     const IREE::HAL::TargetBackendRegistry &targetRegistry,
@@ -45,7 +37,7 @@ void buildIREEPrecompileTransformPassPipeline(
   // specifying targets.
   if (!executableOptions.targets.empty()) {
     passManager.addPass(IREE::HAL::createAssignTargetDevicesPass(
-        targetRegistry, executableOptions.targets));
+        {&targetRegistry, executableOptions.targets}));
   }
 
   // Input pipelines can result in changes to the exported functions and types
@@ -59,25 +51,17 @@ void buildIREEPrecompileTransformPassPipeline(
       hooks.pipelineExtensions->extendInputConversionPreprocessingPassPipeline(
           passManager, inputType);
     }
-    AutoInputConversionPipelineOptions autoOptions;
-    autoOptions.demoteI64ToI32 = inputOptions.demoteI64ToI32;
-    autoOptions.demoteF64ToF32 = inputOptions.demoteF64ToF32;
-    autoOptions.promoteBF16ToF32 = inputOptions.promoteBF16ToF32;
-
-#ifdef IREE_HAVE_STABLEHLO_INPUT
-    stablehlo::StableHloOptions stablehloOptions;
-    stablehloOptions.demoteI64ToI32 = inputOptions.demoteI64ToI32;
-    stablehloOptions.demoteF64ToF32 = inputOptions.demoteF64ToF32;
-    stablehloOptions.promoteBF16ToF32 = inputOptions.promoteBF16ToF32;
-#endif // IREE_HAVE_STABLEHLO_INPUT
 
     switch (inputType) {
     case InputDialectOptions::Type::none:
       break;
     case InputDialectOptions::Type::auto_detect:
-      passManager.addPass(createAutoInputConversionPipelinePass(autoOptions));
+      // Run the auto pipeline that chooses from plugins using module contents.
+      passManager.addPass(
+          createAutoInputConversionPipelinePass(hooks.pipelineExtensions));
       break;
     case InputDialectOptions::Type::plugin: {
+      // Explicitly use a single plugin.
       bool foundExtension = false;
       if (hooks.pipelineExtensions) {
         foundExtension =
@@ -95,22 +79,8 @@ void buildIREEPrecompileTransformPassPipeline(
       }
       break;
     }
-#ifdef IREE_HAVE_STABLEHLO_INPUT
-    case InputDialectOptions::Type::stablehlo:
-      stablehlo::buildStableHLOInputConversionPassPipeline(passManager,
-                                                           stablehloOptions);
-      break;
-    case InputDialectOptions::Type::stablehlo_xla:
-      stablehlo::buildStableHLOXLAInputConversionPassPipeline(passManager,
-                                                              stablehloOptions);
-      break;
-#endif // IREE_HAVE_STABLEHLO_INPUT
-#ifdef IREE_HAVE_TOSA_INPUT
-    case InputDialectOptions::Type::tosa:
-      buildTOSAInputConversionPassPipeline(passManager);
-      break;
-#endif // IREE_HAVE_TOSA_INPUT
     }
+
     buildCommonInputConversionPassPipeline(passManager);
     IREE_TRACE_ADD_END_FRAME_PASS(passManager, "Input");
   }
@@ -159,19 +129,36 @@ void buildIREEPrecompileTransformPassPipeline(
     break;
   default:
     if (compileFrom < IREEVMPipelinePhase::Preprocessing) { // late-entry.
-      IREE_TRACE_ADD_BEGIN_FRAME_PASS(passManager, "Preprocessing");
-      IREE::buildPreprocessingPassPipeline(passManager, preprocessingOptions,
-                                           hooks.pipelineExtensions);
-      IREE_TRACE_ADD_END_FRAME_PASS(passManager, "Preprocessing");
+      // Not a large enough phase for IREE_TRACE_ADD_[BEGIN,END]_FRAME_PASS.
+      Preprocessing::buildPreprocessingPassPipeline(
+          passManager, preprocessingOptions, hooks.pipelineExtensions);
     }
     if (compileTo == IREEVMPipelinePhase::Preprocessing)
       return; // early-exit
 
     if (compileFrom < IREEVMPipelinePhase::GlobalOptimization) { // late-entry
-      IREE_TRACE_ADD_BEGIN_FRAME_PASS(passManager, "GlobalOptimization");
+      // This pass pipeline recursively invokes the compiler if constEval is
+      // enabled. In that case, we have to be careful to not emit unbalanced
+      // trace frames:
+      //   begin 'GlobalOptimization'
+      //   begin 'Input'
+      //   end   'Input'
+      //   begin 'GlobalOptimization' <-- unbalanced! Use a different name.
+      //   end   'GlobalOptimization'
+      //   ...
+      //   end   'GlobalOptimization'
+      if (globalOptimizationOptions.constEval) {
+        IREE_TRACE_ADD_BEGIN_FRAME_PASS(passManager, "GlobalOptimizationConst");
+      } else {
+        IREE_TRACE_ADD_BEGIN_FRAME_PASS(passManager, "GlobalOptimization");
+      }
       GlobalOptimization::buildGlobalOptimizationPassPipeline(
           passManager, globalTransformOptions);
-      IREE_TRACE_ADD_END_FRAME_PASS(passManager, "GlobalOptimization");
+      if (globalOptimizationOptions.constEval) {
+        IREE_TRACE_ADD_END_FRAME_PASS(passManager, "GlobalOptimizationConst");
+      } else {
+        IREE_TRACE_ADD_END_FRAME_PASS(passManager, "GlobalOptimization");
+      }
     }
     if (compileTo == IREEVMPipelinePhase::GlobalOptimization)
       return; // early-exit
@@ -239,6 +226,9 @@ void buildIREEVMTransformPassPipeline(
   case IREEVMPipelinePhase::ExecutableSources:
     halCompileFrom = IREE::HAL::PipelinePhase::ExecutableSources;
     break;
+  case IREEVMPipelinePhase::ExecutableConfigurations:
+    halCompileFrom = IREE::HAL::PipelinePhase::ExecutableConfigurations;
+    break;
   case IREEVMPipelinePhase::ExecutableTargets:
     halCompileFrom = IREE::HAL::PipelinePhase::ExecutableTargets;
     break;
@@ -251,6 +241,9 @@ void buildIREEVMTransformPassPipeline(
     break;
   case IREEVMPipelinePhase::ExecutableSources:
     halCompileTo = IREE::HAL::PipelinePhase::ExecutableSources;
+    break;
+  case IREEVMPipelinePhase::ExecutableConfigurations:
+    halCompileTo = IREE::HAL::PipelinePhase::ExecutableConfigurations;
     break;
   case IREEVMPipelinePhase::ExecutableTargets:
     halCompileTo = IREE::HAL::PipelinePhase::ExecutableTargets;
@@ -327,5 +320,4 @@ void registerIREEVMTransformPassPipeline() {
       });
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

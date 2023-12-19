@@ -67,15 +67,15 @@ elseif(RISCV_CPU MATCHES "riscv_32")
 endif()
 
 if(RISCV_CPU STREQUAL "linux-riscv_64")
-  set(CMAKE_SYSTEM_LIBRARY_PATH "${RISCV_TOOLCHAIN_ROOT}/sysroot/usr/lib")
+  set(CMAKE_SYSTEM_LIBRARY_PATH "${RISCV_TOOLCHAIN_ROOT}/sysroot/lib64/lp64d")
+  set(CMAKE_SYSROOT "${RISCV_TOOLCHAIN_ROOT}/sysroot")
   # Specify ISP spec for march=rv64gc. This is to resolve the mismatch between
   # llvm and binutil ISA version.
   set(RISCV_COMPILER_FLAGS "${RISCV_COMPILER_FLAGS} \
-      -march=rv64i2p0ma2p0f2p0d2p0c2p0 -mabi=lp64d")
+      -march=rv64i2p1ma2p1f2p2d2p2c2p0 -mabi=lp64d")
   set(RISCV_LINKER_FLAGS "${RISCV_LINKER_FLAGS} -lstdc++ -lpthread -lm -ldl")
   set(RISCV64_TEST_DEFAULT_LLVM_FLAGS
     "--iree-llvmcpu-target-triple=riscv64"
-    "--iree-llvmcpu-target-cpu=generic-rv64"
     "--iree-llvmcpu-target-abi=lp64d"
     "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+zvl512b,+v"
     "--riscv-v-fixed-length-vector-lmul-max=8"
@@ -92,22 +92,25 @@ elseif(RISCV_CPU STREQUAL "linux-riscv_32")
     "${RISCV_TOOLCHAIN_ROOT}/sysroot/usr/lib32"
     "${RISCV_TOOLCHAIN_ROOT}/sysroot/usr/lib32/ilp32d"
   )
+  set(CMAKE_SYSROOT "${RISCV_TOOLCHAIN_ROOT}/sysroot")
+  # Specify ISP spec for march=rv32gc. This is to resolve the mismatch between
+  # llvm and binutil ISA version.
   set(RISCV_COMPILER_FLAGS "${RISCV_COMPILER_FLAGS} \
-      -march=rv32i2p0ma2p0f2p0d2p0c2p0 -mabi=ilp32d \
+      -march=rv32i2p1ma2p1f2p2d2p2c2p0 -mabi=ilp32d \
       -Wno-atomic-alignment")
   set(RISCV_LINKER_FLAGS "${RISCV_LINKER_FLAGS} -lstdc++ -lpthread -lm -ldl -latomic")
   set(RISCV32_TEST_DEFAULT_LLVM_FLAGS
     "--iree-llvmcpu-target-triple=riscv32"
-    "--iree-llvmcpu-target-cpu=generic-rv32"
     "--iree-llvmcpu-target-abi=ilp32d"
     "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+zvl512b,+zve32f"
     "--riscv-v-fixed-length-vector-lmul-max=8"
     CACHE INTERNAL "Default llvm codegen flags for testing purposes")
 elseif(RISCV_CPU STREQUAL "generic-riscv_32")
-  # Specify ISP spec for march=rv32gc. This is to resolve the mismatch between
+  set(CMAKE_SYSROOT "${RISCV_TOOLCHAIN_ROOT}/${RISCV_TOOLCHAIN_PREFIX}")
+  # Specify ISP spec for march=rv32imf. This is to resolve the mismatch between
   # llvm and binutil ISA version.
   set(RISCV_COMPILER_FLAGS "${RISCV_COMPILER_FLAGS} \
-      -march=rv32i2p0mf2p0 -mabi=ilp32 -DIREE_PLATFORM_GENERIC=1 -DIREE_SYNCHRONIZATION_DISABLE_UNSAFE=1 \
+      -march=rv32i2p1mf2p2 -mabi=ilp32 -DIREE_PLATFORM_GENERIC=1 -DIREE_SYNCHRONIZATION_DISABLE_UNSAFE=1 \
       -DIREE_FILE_IO_ENABLE=0 -DIREE_TIME_NOW_FN=\"\{ return 0; \}\" -DIREE_DEVICE_SIZE_T=uint32_t -DPRIdsz=PRIu32")
   set(RISCV_LINKER_FLAGS "${RISCV_LINKER_FLAGS} -lm")
 endif()

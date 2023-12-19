@@ -18,10 +18,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace VM {
+namespace mlir::iree_compiler::IREE::VM {
 
 static void printCompilerConfigurationBlock(llvm::raw_ostream &output) {
   output << "//" << std::string(77, '=') << "\n"
@@ -75,8 +72,7 @@ static LogicalResult printRodataBuffers(IREE::VM::ModuleOp &moduleOp,
     assert(value && "expected a serializable rodata value");
     SmallVector<char> byteBuffer;
     if (failed(value.serializeToVector(rodataOp.getLoc(),
-                                       llvm::support::endianness::little,
-                                       byteBuffer))) {
+                                       llvm::endianness::little, byteBuffer))) {
       return rodataOp.emitError() << "error during serialization";
     }
 
@@ -477,7 +473,7 @@ LogicalResult translateModuleToC(IREE::VM::ModuleOp moduleOp,
     // TODO(simon-camp): Clean up. We generate calls to a macro that defines a
     // struct. As we declare all variables at the start of the function, the
     // macro call cannot be inlined into the function.
-    if (!isa<mlir::func::FuncOp, emitc::CallOp>(op))
+    if (!isa<mlir::func::FuncOp, emitc::CallOpaqueOp>(op))
       continue;
     if (op.hasAttr("vm.emit_at_end"))
       continue;
@@ -522,7 +518,4 @@ LogicalResult translateModuleToC(mlir::ModuleOp outerModuleOp,
   return translateModuleToC(*moduleOps.begin(), targetOptions, output);
 }
 
-} // namespace VM
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::VM

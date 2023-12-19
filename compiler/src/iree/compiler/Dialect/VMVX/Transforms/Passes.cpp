@@ -11,7 +11,6 @@
 #include "iree-dialects/Dialect/LinalgExt/Passes/Passes.h"
 #include "iree/compiler/Codegen/Common/CPU/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
-#include "iree/compiler/Codegen/LLVMCPU/Passes.h"
 #include "iree/compiler/Codegen/VMVX/Passes.h"
 #include "iree/compiler/Dialect/HAL/Transforms/Passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -25,22 +24,34 @@
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace VMVX {
+namespace mlir::iree_compiler::IREE::VMVX {
 
-static void buildVectorVMVXTransformPassPipeline(OpPassManager &passManager) {
+// ---------------------------------------------------------------------------
+// Variant configuration
+// ---------------------------------------------------------------------------
+
+void buildVMVXConfigurationPassPipeline(OpPassManager &passManager) {
   // ---------------------------------------------------------------------------
   // Tensor-level optimization, kernel dispatch and lower to buffers.
   // ---------------------------------------------------------------------------
-  addCommonTargetExecutablePreprocessingPasses(passManager.nest<ModuleOp>());
+  addCommonTargetExecutablePreprocessingPasses(passManager);
   passManager.nest<ModuleOp>().addNestedPass<func::FuncOp>(
       createCPUMaterializeEncodingPass());
   // TODO: Remove the following pass the plumb support for #hal.descriptor_type
   // memory space through the stack.
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
-  passManager.addPass(createLLVMCPULowerExecutableTargetPass());
+  passManager.addPass(createVMVXSelectLoweringStrategyPass());
+}
+
+// ---------------------------------------------------------------------------
+// Variant Translation
+// ---------------------------------------------------------------------------
+
+static void buildVectorVMVXTransformPassPipeline(OpPassManager &passManager) {
+  // ---------------------------------------------------------------------------
+  // Tensor-level optimization, kernel dispatch and lower to buffers.
+  // ---------------------------------------------------------------------------
+  passManager.addPass(createVMVXLowerExecutableTargetPass());
 
   OpPassManager &nestedModulePM = passManager.nest<ModuleOp>();
 
@@ -138,6 +149,13 @@ void registerVMVXPasses() {
   // Generated.
   registerPasses();
 
+  static PassPipelineRegistration<> configurationPassPipeline(
+      "iree-vmvx-configuration-pipeline",
+      "Runs the full IREE VMVX dialect configuration pipeline",
+      [](OpPassManager &passManager) {
+        buildVMVXConfigurationPassPipeline(passManager);
+      });
+
   static PassPipelineRegistration<> transformPassPipeline(
       "iree-vmvx-transformation-pipeline",
       "Runs the full IREE VMVX dialect transformation pipeline",
@@ -146,7 +164,4 @@ void registerVMVXPasses() {
       });
 }
 
-} // namespace VMVX
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::VMVX

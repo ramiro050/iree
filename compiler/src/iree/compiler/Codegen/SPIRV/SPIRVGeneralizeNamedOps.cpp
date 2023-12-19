@@ -17,8 +17,7 @@
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 namespace {
 struct SPIRVGeneralizeNamedOpsPass
@@ -32,8 +31,8 @@ void SPIRVGeneralizeNamedOpsPass::runOnOperation() {
   auto funcOp = getOperation();
   SmallVector<linalg::LinalgOp> namedOpCandidates;
   funcOp.walk([&](linalg::LinalgOp linalgOp) {
-    if (isa<linalg::MatmulTransposeBOp, linalg::VecmatOp, linalg::MatvecOp>(
-            linalgOp))
+    if (isa<linalg::BatchMatmulTransposeBOp, linalg::MatmulTransposeBOp,
+            linalg::VecmatOp, linalg::MatvecOp>(linalgOp))
       namedOpCandidates.push_back(linalgOp);
   });
 
@@ -54,5 +53,4 @@ createSPIRVGeneralizeNamedOpsPass() {
   return std::make_unique<SPIRVGeneralizeNamedOpsPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

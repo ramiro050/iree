@@ -22,8 +22,7 @@
 
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE << "]: ")
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Compose map with apply affine ops and try to simplify it.
 static void combineAndSimplifyMap(AffineMap &map, SmallVectorImpl<Value> &dims,
@@ -129,7 +128,7 @@ static bool alwaysRunsFirstIteration(scf::ForOp op, GetMinMaxExprFn getMinMax) {
   auto map = AffineMap::get(dims.size(), 0, iterZero);
   AffineMap simplifiedMap = substituteMin(map, dims, symbols, getMinMax);
   assert(simplifiedMap.getNumResults() == 1);
-  if (auto cst = simplifiedMap.getResult(0).dyn_cast<AffineConstantExpr>()) {
+  if (auto cst = dyn_cast<AffineConstantExpr>(simplifiedMap.getResult(0))) {
     if (cst.getValue() > 0)
       return true;
   }
@@ -155,7 +154,7 @@ static bool neverRunsSecondIteration(scf::ForOp op, GetMinMaxExprFn getMinMax) {
 
   AffineMap simplifiedMap = substituteMin(map, dims, symbols, getMinMax);
   assert(simplifiedMap.getNumResults() == 1);
-  if (auto cst = simplifiedMap.getResult(0).dyn_cast<AffineConstantExpr>()) {
+  if (auto cst = dyn_cast<AffineConstantExpr>(simplifiedMap.getResult(0))) {
     if (cst.getValue() >= 0)
       return true;
   }
@@ -199,5 +198,4 @@ void populateRemoveSingleIterationLoopPattern(RewritePatternSet &patterns,
   patterns.add<SimplifyTrivialLoops>(patterns.getContext(), getMinMaxFn);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

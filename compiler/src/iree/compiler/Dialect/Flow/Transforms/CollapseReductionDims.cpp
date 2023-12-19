@@ -8,13 +8,11 @@
 #include "iree/compiler/Dialect/Flow/Transforms/Passes.h"
 #include "iree/compiler/Dialect/Flow/Transforms/RegionOpUtils.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace Flow {
+namespace mlir::iree_compiler::IREE::Flow {
 
 namespace {
 
@@ -44,19 +42,19 @@ static bool hasContiguousDims(AffineMap map, ArrayRef<unsigned> dims) {
 }
 
 static SmallVector<ReassociationIndices>
-collapseDimensions(linalg::GenericOp genericOp) {
+collapseDimensions(linalg::LinalgOp linalgOp) {
   SmallVector<ReassociationIndices> collapseIndices;
 
-  if (!isNonNullAndOutsideDispatch(genericOp)) {
+  if (!isNonNullAndOutsideDispatch(linalgOp)) {
     return collapseIndices;
   }
 
   SmallVector<unsigned> reductionDims;
-  genericOp.getReductionDims(reductionDims);
+  linalgOp.getReductionDims(reductionDims);
   if (reductionDims.size() < 2)
     return collapseIndices;
 
-  for (AffineMap map : genericOp.getIndexingMapsArray()) {
+  for (AffineMap map : linalgOp.getIndexingMapsArray()) {
     if (!hasContiguousDims(map, reductionDims))
       return collapseIndices;
   }
@@ -89,7 +87,4 @@ std::unique_ptr<Pass> createCollapseDimsPass() {
   return std::make_unique<CollapseDimsPass>();
 }
 
-} // namespace Flow
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::Flow

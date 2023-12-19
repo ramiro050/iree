@@ -23,8 +23,7 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 void ConvertToDynamicSharedMemory(ModuleOp moduleOp) {
   SymbolTableCollection symbolTableCollection;
@@ -76,8 +75,7 @@ void ConvertToDynamicSharedMemory(ModuleOp moduleOp) {
         loc, IntegerType::get(builder.getContext(), 64),
         builder.getI64IntegerAttr(offset));
     Value shiftedPtr = builder.create<LLVM::GEPOp>(
-        loc, globalPtr.getType(),
-        LLVM::LLVMPointerType::get(globalOp.getContext()), globalPtr,
+        loc, globalPtr.getType(), global.getGlobalType(), globalPtr,
         ValueRange({zero, offsetValue}));
     addressOfOp.replaceAllUsesWith(shiftedPtr);
     addressOfOp.erase();
@@ -85,7 +83,7 @@ void ConvertToDynamicSharedMemory(ModuleOp moduleOp) {
   // Add the amount of shared memory required as an attribute.
   auto variantOp = moduleOp->getParentOfType<IREE::HAL::ExecutableVariantOp>();
   if (variantOp != nullptr) {
-    for (auto exportOp : variantOp.getOps<IREE::HAL::ExecutableExportOp>()) {
+    for (auto exportOp : variantOp.getExportOps()) {
       exportOp->setAttr(exportOp.getWorkgroupLocalMemoryAttrName(),
                         builder.getIndexAttr(numberOfBytes));
     }
@@ -140,7 +138,7 @@ struct ConvertSharedMemAllocOp : public OpRewritePattern<memref::AllocOp> {
       return failure();
     ArrayRef<int64_t> shape = allocOp.getType().getShape();
     if (llvm::any_of(shape,
-                     [](int64_t dim) { return dim == ShapedType::kDynamic; })) {
+                     [](int64_t dim) { return ShapedType::isDynamic(dim); })) {
       return failure();
     }
 
@@ -430,7 +428,7 @@ public:
         desc.setConstantStride(rewriter, loc, rank - 1, 1);
         OpFoldResult currentStride = rewriter.getIndexAttr(1);
         for (int i = rank - 1; i > 0; --i) {
-          if (strides[i - 1] == ShapedType::kDynamic) {
+          if (ShapedType::isDynamic(strides[i - 1])) {
             auto dim = desc.size(rewriter, loc, i);
             Value currentStrideVal;
             if (std::optional<int64_t> currentStrideInt =
@@ -507,7 +505,7 @@ struct HALInterfaceWorkgroupOpsConverter final
   }
 };
 
-} // anonymous namespace
+} // namespace
 
 void populateLLVMConversionPatterns(MLIRContext *context,
                                     RewritePatternSet &patterns,
@@ -561,5 +559,4 @@ void populateGpuMemorySpaceAttributeConversions(
       });
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

@@ -13,6 +13,7 @@
 *.VC.opendb
 *.suo
 *.user
+*.code-workspace
 
 # macOS files
 .DS_Store
@@ -20,9 +21,14 @@
 # CMake artifacts
 build/
 build-*/
+Testing/
 
 # Bazel artifacts
 **/bazel-*
+
+# Executables
+*.exe
+*.out
 
 # Local-only config options
 configured.bazelrc
@@ -43,7 +49,9 @@ imgui.ini
 # Source indexing files
 compile_commands.json
 .cache/clangd
-.clangd/
+
+# Language server configuration files
+.clangd
 
 # Pyenv files
 .python-version
@@ -68,6 +76,7 @@ docs/website/site/
 
 # Temporary files
 iree/builtins/**/bin/*.ll
+artifacts/
 
 # Archive files
 *.tar
@@ -78,3 +87,6 @@ iree/builtins/**/bin/*.ll
 
 # Local cache files
 llvm-external-projects/iree-dialects/.cache
+
+# pkgci artifacts
+artifacts/

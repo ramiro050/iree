@@ -81,88 +81,6 @@ iree_hal_device_query_semaphore_compatibility(iree_hal_device_t* device,
                                                                  semaphore);
 }
 
-IREE_API_EXPORT iree_status_t iree_hal_device_transfer_range(
-    iree_hal_device_t* device, iree_hal_transfer_buffer_t source,
-    iree_device_size_t source_offset, iree_hal_transfer_buffer_t target,
-    iree_device_size_t target_offset, iree_device_size_t data_length,
-    iree_hal_transfer_buffer_flags_t flags, iree_timeout_t timeout) {
-  if (data_length == 0) {
-    return iree_ok_status();  // No-op.
-  }
-
-  // host->host is not allowed. We may want to support this one day to allow for
-  // parallelized copies and such, however the validation code differs quite a
-  // bit and it'd be better to have this as part of a task system API.
-  bool is_source_host = source.device_buffer == NULL;
-  bool is_target_host = target.device_buffer == NULL;
-  if (is_source_host && is_target_host) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "cannot perform host->host transfers via this API, use memcpy/memmove");
-  }
-
-  // Check for overlap - like memcpy we require that the two ranges don't have
-  // any overlap as we may use memcpy. This only matters if the buffers are
-  // both device buffers - host and device should never alias: behavior is
-  // undefined if a user tries to pass a mapped device pointer as if it was a
-  // host pointer.
-  if (!is_source_host && !is_target_host &&
-      iree_hal_buffer_test_overlap(source.device_buffer, source_offset,
-                                   data_length, target.device_buffer,
-                                   target_offset, data_length) !=
-          IREE_HAL_BUFFER_OVERLAP_DISJOINT) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "source and target ranges must not overlap within the same buffer");
-  }
-
-  IREE_TRACE_ZONE_BEGIN(z0);
-  IREE_TRACE_ZONE_APPEND_TEXT(
-      z0, is_source_host ? "h2d" : (is_target_host ? "d2h" : "d2d"));
-  IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, data_length);
-
-  // Defer to the backing implementation.
-  iree_status_t status = _VTABLE_DISPATCH(device, transfer_range)(
-      device, source, source_offset, target, target_offset, data_length, flags,
-      timeout);
-
-  IREE_TRACE_ZONE_END(z0);
-  return status;
-}
-
-IREE_API_EXPORT iree_status_t iree_hal_device_transfer_h2d(
-    iree_hal_device_t* device, const void* source, iree_hal_buffer_t* target,
-    iree_device_size_t target_offset, iree_device_size_t data_length,
-    iree_hal_transfer_buffer_flags_t flags, iree_timeout_t timeout) {
-  return iree_hal_device_transfer_range(
-      device,
-      iree_hal_make_host_transfer_buffer_span((void*)source, data_length), 0,
-      iree_hal_make_device_transfer_buffer(target), target_offset, data_length,
-      flags, timeout);
-}
-
-IREE_API_EXPORT iree_status_t iree_hal_device_transfer_d2h(
-    iree_hal_device_t* device, iree_hal_buffer_t* source,
-    iree_device_size_t source_offset, void* target,
-    iree_device_size_t data_length, iree_hal_transfer_buffer_flags_t flags,
-    iree_timeout_t timeout) {
-  return iree_hal_device_transfer_range(
-      device, iree_hal_make_device_transfer_buffer(source), source_offset,
-      iree_hal_make_host_transfer_buffer_span(target, data_length), 0,
-      data_length, flags, timeout);
-}
-
-IREE_API_EXPORT iree_status_t iree_hal_device_transfer_d2d(
-    iree_hal_device_t* device, iree_hal_buffer_t* source,
-    iree_device_size_t source_offset, iree_hal_buffer_t* target,
-    iree_device_size_t target_offset, iree_device_size_t data_length,
-    iree_hal_transfer_buffer_flags_t flags, iree_timeout_t timeout) {
-  return iree_hal_device_transfer_range(
-      device, iree_hal_make_device_transfer_buffer(source), source_offset,
-      iree_hal_make_device_transfer_buffer(target), target_offset, data_length,
-      flags, timeout);
-}
-
 IREE_API_EXPORT iree_status_t iree_hal_device_queue_alloca(
     iree_hal_device_t* device, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
@@ -204,6 +122,55 @@ IREE_API_EXPORT iree_status_t iree_hal_device_queue_dealloca(
   iree_status_t status = _VTABLE_DISPATCH(device, queue_dealloca)(
       device, queue_affinity, wait_semaphore_list, signal_semaphore_list,
       buffer);
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
+IREE_API_EXPORT iree_status_t iree_hal_device_queue_fill(
+    iree_hal_device_t* device, iree_hal_queue_affinity_t queue_affinity,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
+    iree_device_size_t length, const void* pattern,
+    iree_host_size_t pattern_length) {
+  IREE_ASSERT_ARGUMENT(device);
+  IREE_ASSERT_ARGUMENT(target_buffer);
+  IREE_ASSERT_ARGUMENT(pattern);
+  IREE_TRACE_ZONE_BEGIN(z0);
+  IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)length);
+
+  // If we are starting execution immediately then we can reduce latency by
+  // allowing inline command buffer execution.
+  iree_hal_command_buffer_mode_t command_buffer_mode =
+      IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT;
+  if (wait_semaphore_list.count == 0) {
+    command_buffer_mode |= IREE_HAL_COMMAND_BUFFER_MODE_ALLOW_INLINE_EXECUTION;
+  }
+
+  iree_hal_transfer_command_t command = {
+      .type = IREE_HAL_TRANSFER_COMMAND_TYPE_FILL,
+      .fill =
+          {
+              .target_buffer = target_buffer,
+              .target_offset = target_offset,
+              .length = length,
+              .pattern = pattern,
+              .pattern_length = pattern_length,
+          },
+  };
+
+  iree_hal_command_buffer_t* command_buffer = NULL;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_create_transfer_command_buffer(device, command_buffer_mode,
+                                                  queue_affinity, 1, &command,
+                                                  &command_buffer));
+
+  iree_status_t status =
+      iree_hal_device_queue_execute(device, queue_affinity, wait_semaphore_list,
+                                    signal_semaphore_list, 1, &command_buffer);
+
+  iree_hal_command_buffer_release(command_buffer);
+
   IREE_TRACE_ZONE_END(z0);
   return status;
 }

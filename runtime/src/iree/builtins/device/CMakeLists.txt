@@ -28,9 +28,23 @@ endif()
 
 iree_bitcode_library(
   NAME
+    libdevice_aarch64_sme
+  ARCH
+    arm_64
+  INTERNAL_HDRS
+    "device.h"
+  SRCS
+    "arch/arm_64/sme_abi.c"
+    "device_generic.c"
+)
+
+iree_bitcode_library(
+  NAME
     libdevice_wasm32_generic
   ARCH
     wasm_32
+  INTERNAL_HDRS
+    "device.h"
   SRCS
     "device_generic.c"
 )
@@ -40,6 +54,8 @@ iree_bitcode_library(
     libdevice_wasm64_generic
   ARCH
     wasm_64
+  INTERNAL_HDRS
+    "device.h"
   SRCS
     "device_generic.c"
 )
@@ -48,6 +64,7 @@ iree_c_embed_data(
   NAME
     libdevice_bitcode
   SRCS
+    "libdevice_aarch64_sme.bc"
     "libdevice_wasm32_generic.bc"
     "libdevice_wasm64_generic.bc"
   DEPS

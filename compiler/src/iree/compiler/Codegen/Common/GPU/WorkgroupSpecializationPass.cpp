@@ -41,8 +41,7 @@
 
 #define DEBUG_TYPE "iree-codegen-workgroup-specialization"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 static llvm::cl::opt<bool> clEnableWorkgroupSpecialization(
     "iree-codegen-enable-workgroup-specialization",
@@ -51,7 +50,7 @@ static llvm::cl::opt<bool> clEnableWorkgroupSpecialization(
 static std::optional<int64_t>
 getConstantLowerBound(affine::AffineMinOp affineMinOp) {
   for (AffineExpr expr : affineMinOp.getMap().getResults()) {
-    if (auto cst = expr.dyn_cast<AffineConstantExpr>()) {
+    if (auto cst = dyn_cast<AffineConstantExpr>(expr)) {
       return cst.getValue();
     }
   }
@@ -172,5 +171,4 @@ createWorkgroupSpecializationPass() {
   return std::make_unique<WorkgroupSpecializationPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

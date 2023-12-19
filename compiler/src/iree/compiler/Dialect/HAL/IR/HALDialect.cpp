@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -24,10 +25,7 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/InliningUtils.h"
 
-namespace mlir {
-namespace iree_compiler {
-namespace IREE {
-namespace HAL {
+namespace mlir::iree_compiler::IREE::HAL {
 
 namespace {
 
@@ -127,6 +125,7 @@ public:
 HALDialect::HALDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context, TypeID::get<HALDialect>()) {
   context->loadDialect<mlir::cf::ControlFlowDialect>();
+  context->loadDialect<mlir::scf::SCFDialect>();
   context->loadDialect<IREE::Util::UtilDialect>();
 
   registerAttributes();
@@ -155,7 +154,4 @@ Operation *HALDialect::materializeConstant(OpBuilder &builder, Attribute value,
   return nullptr;
 }
 
-} // namespace HAL
-} // namespace IREE
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler::IREE::HAL

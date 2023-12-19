@@ -37,8 +37,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 /// Insert instructions to convert from one element type to another.
 static Value convertElementType(OpBuilder &b, Location loc, Type targetType,
@@ -105,7 +104,7 @@ struct ConstantOpTypeConversion
   LogicalResult
   matchAndRewrite(arith::ConstantOp constantOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
-    auto attr = llvm::cast<DenseElementsAttr>(constantOp.getValue());
+    auto attr = llvm::cast<ElementsAttr>(constantOp.getValue());
     auto attrType = llvm::dyn_cast<ShapedType>(attr.getType());
     if (!attrType) {
       return rewriter.notifyMatchFailure(
@@ -628,5 +627,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTypePropagationPass() {
   return std::make_unique<TypePropagationPass>();
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

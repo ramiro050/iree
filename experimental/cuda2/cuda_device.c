@@ -11,7 +11,6 @@
 #include <string.h>
 
 #include "experimental/cuda2/cuda_allocator.h"
-#include "experimental/cuda2/cuda_buffer.h"
 #include "experimental/cuda2/cuda_dynamic_symbols.h"
 #include "experimental/cuda2/cuda_status_util.h"
 #include "experimental/cuda2/event_pool.h"
@@ -23,12 +22,12 @@
 #include "experimental/cuda2/nop_executable_cache.h"
 #include "experimental/cuda2/pending_queue_actions.h"
 #include "experimental/cuda2/pipeline_layout.h"
+#include "experimental/cuda2/stream_command_buffer.h"
 #include "experimental/cuda2/timepoint_pool.h"
 #include "experimental/cuda2/tracing.h"
 #include "iree/base/internal/arena.h"
 #include "iree/base/internal/event_pool.h"
 #include "iree/base/internal/math.h"
-#include "iree/hal/utils/buffer_transfer.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/memory_file.h"
@@ -109,6 +108,7 @@ IREE_API_EXPORT void iree_hal_cuda2_device_params_initialize(
   out_params->arena_block_size = 32 * 1024;
   out_params->event_pool_capacity = 32;
   out_params->queue_count = 1;
+  out_params->command_buffer_mode = IREE_HAL_CUDA_COMMAND_BUFFER_MODE_GRAPH;
   out_params->stream_tracing = false;
   out_params->async_allocations = true;
 }
@@ -137,7 +137,6 @@ static iree_status_t iree_hal_cuda2_device_create_internal(
   iree_host_size_t total_size = iree_sizeof_struct(*device) + identifier.size;
   IREE_RETURN_IF_ERROR(
       iree_allocator_malloc(host_allocator, total_size, (void**)&device));
-  memset(device, 0, total_size);
 
   iree_hal_resource_initialize(&iree_hal_cuda2_device_vtable,
                                &device->resource);
@@ -440,10 +439,10 @@ static iree_status_t iree_hal_cuda2_device_create_channel(
   if (!device->nccl_symbols || !device->nccl_symbols->dylib) {
     return iree_make_status(
         IREE_STATUS_UNAVAILABLE,
-        "NCCL runtime library (%d.%d.%d) not available; ensure installed and "
-        "the shared library is on your PATH/LD_LIBRARY_PATH "
-        "(nccl.dll/libnccl.so)",
-        NCCL_MAJOR, NCCL_MINOR, NCCL_PATCH);
+        "NCCL runtime library version %d.%d and greater not available; "
+        "ensure installed and the shared library (nccl.dll/libnccl.so) "
+        "is on your PATH/LD_LIBRARY_PATH.",
+        NCCL_MAJOR, NCCL_MINOR);
   }
 
   // Today we only allow a single logical device per channel.
@@ -517,16 +516,41 @@ static iree_status_t iree_hal_cuda2_device_create_channel(
       params.count, device->host_allocator, out_channel);
 }
 
+iree_status_t iree_hal_cuda2_device_create_stream_command_buffer(
+    iree_hal_device_t* base_device, iree_hal_command_buffer_mode_t mode,
+    iree_hal_command_category_t command_categories,
+    iree_host_size_t binding_capacity,
+    iree_hal_command_buffer_t** out_command_buffer) {
+  iree_hal_cuda2_device_t* device = iree_hal_cuda2_device_cast(base_device);
+  return iree_hal_cuda2_stream_command_buffer_create(
+      base_device, device->cuda_symbols, device->nccl_symbols,
+      device->tracing_context, mode, command_categories, binding_capacity,
+      device->dispatch_cu_stream, &device->block_pool, device->host_allocator,
+      out_command_buffer);
+}
+
 static iree_status_t iree_hal_cuda2_device_create_command_buffer(
     iree_hal_device_t* base_device, iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
   iree_hal_cuda2_device_t* device = iree_hal_cuda2_device_cast(base_device);
-  return iree_hal_cuda2_graph_command_buffer_create(
-      base_device, device->cuda_symbols, device->cu_context, mode,
-      command_categories, queue_affinity, binding_capacity, &device->block_pool,
-      device->host_allocator, out_command_buffer);
+
+  switch (device->params.command_buffer_mode) {
+    case IREE_HAL_CUDA_COMMAND_BUFFER_MODE_GRAPH:
+      return iree_hal_cuda2_graph_command_buffer_create(
+          base_device, device->cuda_symbols, device->cu_context, mode,
+          command_categories, queue_affinity, binding_capacity,
+          &device->block_pool, device->host_allocator, out_command_buffer);
+    case IREE_HAL_CUDA_COMMAND_BUFFER_MODE_STREAM:
+      return iree_hal_deferred_command_buffer_create(
+          base_device, mode, command_categories, binding_capacity,
+          &device->block_pool, iree_hal_device_host_allocator(base_device),
+          out_command_buffer);
+    default:
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "invalid command buffer mode");
+  }
 }
 
 static iree_status_t iree_hal_cuda2_device_create_descriptor_set_layout(
@@ -623,7 +647,7 @@ static iree_status_t iree_hal_cuda2_device_queue_alloca(
   // allocator is set on the device.
   iree_status_t status = iree_ok_status();
   if (device->supports_memory_pools &&
-      !iree_any_bit_set(params.access, IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
+      !iree_all_bits_set(params.type, IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
     status = iree_hal_cuda2_memory_pools_alloca(
         &device->memory_pools, device->dispatch_cu_stream, pool, params,
         allocation_size, out_buffer);
@@ -728,7 +752,7 @@ static iree_status_t iree_hal_cuda2_device_queue_execute(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_status_t status = iree_hal_cuda2_pending_queue_actions_enqueue_execution(
-      device->dispatch_cu_stream, device->callback_cu_stream,
+      base_device, device->dispatch_cu_stream, device->callback_cu_stream,
       device->pending_queue_actions, wait_semaphore_list, signal_semaphore_list,
       command_buffer_count, command_buffers);
   if (iree_status_is_ok(status)) {
@@ -800,7 +824,6 @@ static const iree_hal_device_vtable_t iree_hal_cuda2_device_vtable = {
     .create_semaphore = iree_hal_cuda2_device_create_semaphore,
     .query_semaphore_compatibility =
         iree_hal_cuda2_device_query_semaphore_compatibility,
-    .transfer_range = iree_hal_device_submit_transfer_range_and_wait,
     .queue_alloca = iree_hal_cuda2_device_queue_alloca,
     .queue_dealloca = iree_hal_cuda2_device_queue_dealloca,
     .queue_read = iree_hal_cuda2_device_queue_read,

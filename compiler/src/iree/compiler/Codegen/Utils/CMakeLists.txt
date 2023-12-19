@@ -14,12 +14,14 @@ iree_cc_library(
   NAME
     Utils
   HDRS
+    "CPUUtils.h"
     "GPUUtils.h"
     "LinalgOpInfo.h"
     "LinkingUtils.h"
     "MarkerUtils.h"
     "Utils.h"
   SRCS
+    "CPUUtils.cpp"
     "GPUUtils.cpp"
     "LinalgOpInfo.cpp"
     "LinkingUtils.cpp"
@@ -42,6 +44,7 @@ iree_cc_library(
     MLIRLinalgUtils
     MLIRMemRefDialect
     MLIRSCFDialect
+    MLIRSCFTransforms
     MLIRSideEffectInterfaces
     MLIRSupport
     MLIRTensorDialect

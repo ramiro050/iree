@@ -61,10 +61,11 @@ iree_cc_library(
     "SPIRVEmulateI64.cpp"
     "SPIRVEraseStorageBufferStaticShape.cpp"
     "SPIRVFinalVectorLowering.cpp"
-    "SPIRVGeneralizeNamedOps.cpp"
     "SPIRVInitialVectorLowering.cpp"
+    "SPIRVLinkExecutables.cpp"
     "SPIRVLowerExecutableTargetPass.cpp"
     "SPIRVMapMemRefStorageClass.cpp"
+    "SPIRVSelectLoweringStrategy.cpp"
     "SPIRVTile.cpp"
     "SPIRVTileAndDistribute.cpp"
     "SPIRVTileAndPromote.cpp"
@@ -145,6 +146,7 @@ iree_cc_library(
     iree::compiler::Dialect::HAL::IR::HALDialect
     iree::compiler::Dialect::Util::IR
     iree::compiler::Dialect::Util::Transforms
+    iree::compiler::Utils
   PUBLIC
 )
 

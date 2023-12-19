@@ -8,7 +8,8 @@ include(CMakeParseArguments)
 
 function(iree_is_bytecode_module_test_excluded_by_labels _DST_IS_EXCLUDED_VAR _SRC_LABELS)
   string(TOLOWER "${CMAKE_BUILD_TYPE}" _LOWERCASE_BUILD_TYPE)
-  if(((IREE_ARCH MARCHES "^riscv_") AND ("noriscv" IN_LIST _SRC_LABELS)) OR
+  if(((IREE_ARCH MATCHES "^riscv_") AND ("noriscv" IN_LIST _SRC_LABELS)) OR
+     (EMSCRIPTEN AND ("nowasm" IN_LIST _SRC_LABELS)) OR
      (IREE_ENABLE_ASAN AND ("noasan" IN_LIST _SRC_LABELS)) OR
      (IREE_ENABLE_TSAN AND ("notsan" IN_LIST _SRC_LABELS)) OR
      (CMAKE_CROSSCOMPILING AND "hostonly" IN_LIST _RULE_LABELS) OR
@@ -41,6 +42,8 @@ endfunction()
 #   TARGET_CPU_FEATURES: If specified, a string passed as argument to
 #       --iree-llvmcpu-target-cpu-features.
 #   DEPENDS: Optional. Additional dependencies beyond SRC and the tools.
+#   INPUT_TYPE: The value for the --iree-input-type= flag. Also disables tests
+#       if no compiled support for that configuration.
 function(iree_check_test)
   if(NOT IREE_BUILD_TESTS)
     return()
@@ -57,7 +60,7 @@ function(iree_check_test)
   cmake_parse_arguments(
     _RULE
     ""
-    "NAME;SRC;TARGET_BACKEND;DRIVER;MODULE_FILE_NAME"
+    "NAME;SRC;TARGET_BACKEND;DRIVER;MODULE_FILE_NAME;INPUT_TYPE"
     "COMPILER_FLAGS;RUNNER_ARGS;LABELS;TARGET_CPU_FEATURES;DEPENDS;TIMEOUT"
     ${ARGN}
   )
@@ -65,6 +68,23 @@ function(iree_check_test)
   iree_is_bytecode_module_test_excluded_by_labels(_EXCLUDED_BY_LABELS "${_RULE_LABELS}")
   if(_EXCLUDED_BY_LABELS)
     return()
+  endif()
+
+  # Exclude based on input type availability.
+  # Note: we can only reliably check for this when builting the compiler host
+  # tools from source. If the tools are already built, we assume that all input
+  # dialects are enabled. We could query the tools in the binary directory for
+  # support dynamically if optionality would be useful.
+  if(NOT IREE_HOST_BIN_DIR)
+    if("${_RULE_INPUT_TYPE}" STREQUAL "stablehlo" AND NOT IREE_INPUT_STABLEHLO)
+      return()
+    endif()
+    if("${_RULE_INPUT_TYPE}" STREQUAL "tosa" AND NOT IREE_INPUT_TOSA)
+      return()
+    endif()
+    if("${_RULE_INPUT_TYPE}" STREQUAL "torch" AND NOT IREE_INPUT_TORCH)
+      return()
+    endif()
   endif()
 
   iree_package_name(_PACKAGE_NAME)
@@ -82,10 +102,14 @@ function(iree_check_test)
     "--iree-hal-target-backends=${_RULE_TARGET_BACKEND}"
   )
 
+  if(_RULE_INPUT_TYPE)
+    list(APPEND _BASE_COMPILER_FLAGS "--iree-input-type=${_RULE_INPUT_TYPE}")
+  endif()
+
   if (_RULE_TARGET_CPU_FEATURES)
     list(APPEND _BASE_COMPILER_FLAGS "--iree-llvmcpu-target-cpu-features=${_RULE_TARGET_CPU_FEATURES}")
   endif()
-  
+
   iree_bytecode_module(
     NAME
       "${_MODULE_NAME}"
@@ -158,6 +182,8 @@ endfunction()
 #   TARGET_CPU_FEATURES: If specified, a string passed as argument to
 #       --iree-llvmcpu-target-cpu-features.
 #   DEPENDS: Optional. Additional dependencies beyond SRC and the tools.
+#   INPUT_TYPE: The value for the --iree-input-type= flag. Also disables tests
+#       if no compiled support for that configuration.
 function(iree_check_single_backend_test_suite)
   if(NOT IREE_BUILD_TESTS)
     return()
@@ -170,7 +196,7 @@ function(iree_check_single_backend_test_suite)
   cmake_parse_arguments(
     _RULE
     ""
-    "NAME;TARGET_BACKEND;DRIVER"
+    "NAME;TARGET_BACKEND;DRIVER;INPUT_TYPE"
     "SRCS;COMPILER_FLAGS;RUNNER_ARGS;LABELS;TARGET_CPU_FEATURES;DEPENDS;TIMEOUT"
     ${ARGN}
   )
@@ -237,6 +263,8 @@ function(iree_check_single_backend_test_suite)
         ${_RULE_DRIVER}
       COMPILER_FLAGS
         ${_RULE_COMPILER_FLAGS}
+      INPUT_TYPE
+        ${_RULE_INPUT_TYPE}
       RUNNER_ARGS
         ${_RULE_RUNNER_ARGS}
       LABELS

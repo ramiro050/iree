@@ -15,8 +15,7 @@
 #include "iree/compiler/Codegen/Dialect/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 //===----------------------------------------------------------------------===//
 // Passes
@@ -56,10 +55,13 @@ void addGPUWarpReductionPassPipeline(OpPassManager &pm);
 /// Default pass pipeline on GPU, currently used only for the ukernel path.
 void addGPUDefaultPassPipeline(OpPassManager &pm);
 
+/// Populates passes needed to preprocess and select the translation strategy.
+void buildLLVMGPUCodegenConfigurationPassPipeline(OpPassManager &pm);
+
 /// Populates passes needed to lower a XLA HLO op to NVVM/ROCDL dialect via
 /// the structured ops path. The pass manager `pm` in here should operate on
 /// the module within the IREE::HAL::ExecutableOp.
-void buildLLVMGPUTransformPassPipeline(OpPassManager &pm, bool useROCM);
+void buildLLVMGPUCodegenPassPipeline(OpPassManager &pm, bool useROCM);
 
 /// Performs the final conversion to NNVM+LLVM dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToNVVMPass();
@@ -72,6 +74,10 @@ std::unique_ptr<OperationPass<ModuleOp>>
 createLLVMGPUCastAddressSpaceFunction();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLLVMGPUDistribute();
+
+/// Create pass selecting the lowering strategy for LLVMGPU.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createLLVMGPUSelectLoweringStrategyPass();
 
 /// Create pass calling the dynamic pipeline for LLVMGPU.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
@@ -125,7 +131,6 @@ void registerCodegenLLVMGPUPasses();
 
 std::unique_ptr<OperationPass<ModuleOp>> createTestLLVMGPULegalizePass();
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 #endif // IREE_COMPILER_CODEGEN_LLVMGPU_PASSES_H_

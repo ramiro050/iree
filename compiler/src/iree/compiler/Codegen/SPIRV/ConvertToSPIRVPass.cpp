@@ -60,9 +60,10 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
+
 namespace {
+
 //===----------------------------------------------------------------------===//
 // Resource utilities
 //===----------------------------------------------------------------------===//
@@ -179,8 +180,7 @@ struct HALInterfaceLoadConstantConverter final
     // TODO(#1519): this conversion should look up the entry point information
     // to get the total push constant count.
     auto variantOp = loadOp->getParentOfType<IREE::HAL::ExecutableVariantOp>();
-    auto exportOps =
-        llvm::to_vector<1>(variantOp.getOps<IREE::HAL::ExecutableExportOp>());
+    auto exportOps = llvm::to_vector<1>(variantOp.getExportOps());
     assert(exportOps.size() == 1);
     auto layoutAttr = exportOps.front().getLayout();
 
@@ -361,11 +361,15 @@ private:
   // Use 64 bits for index widths.
   unsigned indexBits;
 };
+
 } // namespace
 
 void ConvertToSPIRVPass::runOnOperation() {
   MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
+
+  if (moduleOp.getBody()->empty())
+    return;
 
   llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
       getAllEntryPoints(moduleOp);
@@ -558,5 +562,4 @@ createConvertToSPIRVPass(bool enableFastMath, unsigned indexBits) {
   return std::make_unique<ConvertToSPIRVPass>(enableFastMath, indexBits);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler

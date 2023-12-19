@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-spirv-lower-executable-target-pass)))' %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-spirv-select-lowering-strategy-pass, iree-spirv-lower-executable-target-pass)))' %s | FileCheck %s
 
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
   #hal.descriptor_set.layout<0, bindings = [
@@ -10,13 +10,13 @@
   ]>
 ]>
 hal.executable @i4_dequant_matvec_f32 {
-  hal.executable.variant @vulkan_spirv_fb, target = <"vulkan-spirv", "vulkan-spirv-fb", {
+  hal.executable.variant @vulkan_spirv_fb target(<"vulkan-spirv", "vulkan-spirv-fb", {
       spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniform, GroupNonUniformShuffle], []>, Unknown:IntegratedGPU, #spirv.resource_limits<
         max_compute_shared_memory_size = 32768,
         max_compute_workgroup_invocations = 512,
         max_compute_workgroup_size = [512, 512, 512],
         subgroup_size = 64>>
-    }> {
+    }>) {
     hal.executable.export @i4_dequant_matvec_f32 layout(#pipeline_layout) {
     ^bb0(%arg0: !hal.device):
       %x, %y, %z = flow.dispatch.workgroup_count_from_slice
@@ -79,8 +79,8 @@ hal.executable @i4_dequant_matvec_f32 {
 //         CHECK:     %[[BCAST:.+]] = vector.broadcast %[[ADD]] : vector<4xf32> to vector<1x4xf32>
 //         CHECK:     scf.yield %[[BCAST]] : vector<1x4xf32>
 
-//         CHECK:   %[[SCAST:.+]] = vector.shape_cast %[[FOR]] : vector<1x4xf32> to vector<4xf32>
-//         CHECK:   vector.reduction <add>, %[[SCAST]] : vector<4xf32> into f32
-// CHECK-COUNT-6:   gpu.shuffle  xor
+//         CHECK:   %[[EXTRACT3:.+]] = vector.extract %[[FOR]][0] : vector<4xf32> from vector<1x4xf32>
+//         CHECK:   %[[REDUCE:.+]] = vector.reduction <add>, %[[EXTRACT3]] : vector<4xf32> into f32
+//         CHECK:   gpu.subgroup_reduce add %[[REDUCE]] : (f32) -> f32
 //         CHECK:   scf.if
 //         CHECK:     vector.transfer_write

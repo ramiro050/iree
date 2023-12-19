@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-linalg-to-spirv-pipeline)))' %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-spirv-configuration-pipeline, iree-codegen-linalg-to-spirv-pipeline)))' %s | FileCheck %s
 
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
   #hal.descriptor_set.layout<0, bindings = [
@@ -7,13 +7,13 @@
   ]>
 ]>
 hal.executable private @subgroup_reduce {
-  hal.executable.variant @vulkan_spirv_fb, target = <"vulkan", "vulkan-spirv-fb", {
+  hal.executable.variant @vulkan_spirv_fb target(<"vulkan", "vulkan-spirv-fb", {
       spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformShuffle], []>, ARM:IntegratedGPU, #spirv.resource_limits<
         max_compute_shared_memory_size = 32768,
         max_compute_workgroup_invocations = 512,
         max_compute_workgroup_size = [512, 512, 512],
        subgroup_size = 16>>
-    }> {
+    }>) {
     hal.executable.export public @subgroup_reduce ordinal(0) layout(#pipeline_layout) {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2: index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2
@@ -52,18 +52,11 @@ hal.executable private @subgroup_reduce {
 // CHECK-DAG:   %[[C8:.+]] = spirv.Constant 8 : i32
 // CHECK-DAG:   %[[F0:.+]] = spirv.Constant 0.000000e+00 : f32
 // CHECK-DAG:   %[[FV0:.+]] = spirv.Constant dense<0.000000e+00> : vector<4xf32>
+// CHECK-DAG:   %[[FV1:.+]] = spirv.Constant dense<1.000000e+00> : vector<4xf32>
 
 // CHECK:   %[[LD:.+]] = spirv.Load "StorageBuffer" %{{.+}} : vector<4xf32>
 // CHECK:   %[[ADDV0:.+]] = spirv.FAdd %[[LD]], %[[FV0]] : vector<4xf32>
-
-// CHECK:   %[[E0:.+]] = spirv.CompositeExtract %[[ADDV0]][0 : i32] : vector<4xf32>
-// CHECK:   %[[E1:.+]] = spirv.CompositeExtract %[[ADDV0]][1 : i32] : vector<4xf32>
-// CHECK:   %[[E2:.+]] = spirv.CompositeExtract %[[ADDV0]][2 : i32] : vector<4xf32>
-// CHECK:   %[[E3:.+]] = spirv.CompositeExtract %[[ADDV0]][3 : i32] : vector<4xf32>
-
-// CHECK:   %[[ADD0:.+]] = spirv.FAdd %[[E0]], %[[E1]] : f32
-// CHECK:   %[[ADD1:.+]] = spirv.FAdd %[[ADD0]], %[[E2]] : f32
-// CHECK:   %[[ADD2:.+]] = spirv.FAdd %[[ADD1]], %[[E3]] : f32
+// CHECK:   %[[ADD2:.+]] = spirv.Dot %[[ADDV0]], %[[FV1]] : vector<4xf32> -> f32
 
 // CHECK:   %[[S0:.+]] = spirv.GroupNonUniformShuffleXor <Subgroup> %[[ADD2]], %[[C1]] : f32, i32
 // CHECK:   %[[ADD3:.+]] = spirv.FAdd %[[ADD2]], %[[S0]] : f32
@@ -112,13 +105,13 @@ hal.executable private @subgroup_reduce {
   ]>
 ]>
 hal.executable private @subgroup_reduce {
-  hal.executable.variant @vulkan_spirv_fb, target = <"vulkan", "vulkan-spirv-fb", {
+  hal.executable.variant @vulkan_spirv_fb target(<"vulkan", "vulkan-spirv-fb", {
       spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader], []>, ARM:IntegratedGPU, #spirv.resource_limits<
         max_compute_shared_memory_size = 32768,
         max_compute_workgroup_invocations = 512,
         max_compute_workgroup_size = [512, 512, 512],
        subgroup_size = 16>>
-    }> {
+    }>) {
     hal.executable.export public @subgroup_reduce ordinal(0) layout(#pipeline_layout) {
     ^bb0(%arg0: !hal.device, %arg1: index, %arg2: index):
       %x, %y, %z = flow.dispatch.workgroup_count_from_dag_root %arg1, %arg2

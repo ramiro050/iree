@@ -12,8 +12,7 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/PassManager.h"
 
-namespace mlir {
-namespace iree_compiler {
+namespace mlir::iree_compiler {
 
 //===----------------------------------------------------------------------===//
 // PassTracing (PassInstrumentation)
@@ -70,10 +69,8 @@ public:
   TraceFrameMarkBeginPass(llvm::StringRef name) { this->name = name; }
 
   void runOnOperation() override {
-    // Always mark the top level (unnamed) frame.
-    IREE_TRACE_FRAME_MARK();
-
     if (!name.empty()) {
+      IREE_TRACE_FRAME_MARK(); // Top level (unnamed) frame.
       IREE_TRACE_FRAME_MARK_BEGIN_NAMED(name.data());
     }
   }
@@ -110,8 +107,7 @@ createTraceFrameMarkEndPass(llvm::StringRef name) {
   return std::make_unique<TraceFrameMarkEndPass>(name);
 }
 
-} // namespace iree_compiler
-} // namespace mlir
+} // namespace mlir::iree_compiler
 
 //===----------------------------------------------------------------------===//
 // Allocation tracking
