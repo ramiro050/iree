@@ -113,7 +113,7 @@ cc_library(
         ":IR",
         ":PassesIncGen",
         ":defs",
-        "//compiler/src/iree/compiler/Codegen/Dialect:IREECodegenDialect",
+        "//compiler/src/iree/compiler/Codegen/Dialect/Codegen/IR:IREECodegenDialect",
         "//compiler/src/iree/compiler/Dialect/Flow/IR",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
