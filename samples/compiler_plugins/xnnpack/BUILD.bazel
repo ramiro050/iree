@@ -25,6 +25,7 @@ cc_library(
     deps = [
         ":IR",
         ":Transforms",
+        ":Conversion",
         ":defs",
         "//compiler/src/iree/compiler/PluginAPI",
         "@llvm-project//mlir:IR",
@@ -42,6 +43,7 @@ iree_td_library(
     srcs = [
         "src/xnnpack_sample/IR/XnnpackOps.td",
         "src/xnnpack_sample/Transforms/Passes.td",
+        "src/xnnpack_sample/Conversion/Passes.td",
     ],
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -111,7 +113,7 @@ cc_library(
     ],
     deps = [
         ":IR",
-        ":PassesIncGen",
+        ":TransformsPassesIncGen",
         ":defs",
         "//compiler/src/iree/compiler/Codegen/Dialect/Codegen/IR:IREECodegenDialect",
         "//compiler/src/iree/compiler/Dialect/Flow/IR",
@@ -121,8 +123,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "Conversion",
+    srcs = [
+        "src/xnnpack_sample/Conversion/StablehloToXnnpack.cpp",
+    ],
+    hdrs = [
+        "src/xnnpack_sample/Conversion/Passes.h",
+        "src/xnnpack_sample/Conversion/Passes.h.inc",
+    ],
+    deps = [
+        ":ConversionPassesIncGen",
+        ":defs",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 iree_gentbl_cc_library(
-    name = "PassesIncGen",
+    name = "TransformsPassesIncGen",
     tbl_outs = [
         (
             ["--gen-pass-decls"],
@@ -131,6 +149,22 @@ iree_gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "src/xnnpack_sample/Transforms/Passes.td",
+    deps = [
+        ":td_files",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+iree_gentbl_cc_library(
+    name = "ConversionPassesIncGen",
+    tbl_outs = [
+        (
+            ["--gen-pass-decls"],
+            "src/xnnpack_sample/Conversion/Passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "src/xnnpack_sample/Conversion/Passes.td",
     deps = [
         ":td_files",
         "@llvm-project//mlir:PassBaseTdFiles",
