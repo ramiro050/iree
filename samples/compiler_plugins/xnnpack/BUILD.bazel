@@ -126,6 +126,7 @@ cc_library(
 cc_library(
     name = "Conversion",
     srcs = [
+        "src/xnnpack_sample/Conversion/Passes.cpp",
         "src/xnnpack_sample/Conversion/StablehloToXnnpack.cpp",
     ],
     hdrs = [
@@ -133,9 +134,10 @@ cc_library(
         "src/xnnpack_sample/Conversion/Passes.h.inc",
     ],
     deps = [
+        ":IR",
         ":ConversionPassesIncGen",
-        ":defs",
-        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

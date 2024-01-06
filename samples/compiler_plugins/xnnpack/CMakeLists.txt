@@ -102,11 +102,13 @@ iree_cc_library(
     "src/xnnpack_sample/Conversion/Passes.h"
     "src/xnnpack_sample/Conversion/Passes.h.inc"
   SRCS
+    "src/xnnpack_sample/Conversion/Passes.cpp"
     "src/xnnpack_sample/Conversion/StablehloToXnnpack.cpp"
   DEPS
     ::ConversionPassesIncGen
-    ::defs
-    MLIRIR
+    ::IR
+    MLIRTransforms
+    StablehloOps
   PUBLIC
 )
 

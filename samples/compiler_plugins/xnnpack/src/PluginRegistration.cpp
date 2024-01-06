@@ -6,9 +6,8 @@
 
 #include "iree/compiler/PluginAPI/Client.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Pass/Pass.h"
+#include "xnnpack_sample/Conversion/Passes.h"
 #include "xnnpack_sample/IR/XnnpackDialect.h"
 #include "xnnpack_sample/Transforms/Passes.h"
 
@@ -31,7 +30,10 @@ struct MyOptions {
 };
 
 struct MySession : public PluginSession<MySession, MyOptions> {
-  static void registerPasses() { ::detail::registerPasses(); }
+  static void registerPasses() {
+    ::detail::registerPasses();
+    IREE::Xnnpack::registerXnnpackPluginConversionPasses();
+  }
 
   void onRegisterDialects(DialectRegistry &registry) override {
     registry.insert<IREE::Xnnpack::XnnpackDialect>();
@@ -40,6 +42,7 @@ struct MySession : public PluginSession<MySession, MyOptions> {
   LogicalResult onActivate() override { return success(); }
 
   void extendPreprocessingPassPipeline(OpPassManager &pm) override {
+    pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpackPass());
     pm.addPass(IREE::Xnnpack::createLegalizeXnnpackPass());
   }
 };
