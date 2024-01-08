@@ -13,11 +13,11 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "xnnpack_sample/IR/XnnpackOps.h"
-#include "xnnpack_sample/Transforms/Passes.h"
+#include "xnnpack/IR/XnnpackOps.h"
+#include "xnnpack/Transforms/Passes.h"
 
 #define GEN_PASS_DEF_LEGALIZEXNNPACK
-#include "xnnpack_sample/Transforms/Passes.h.inc"
+#include "xnnpack/Transforms/Passes.h.inc"
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {

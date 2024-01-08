@@ -1,4 +1,4 @@
-// RUN: iree-opt --iree-plugin=xnnpack_sample --iree-print-plugin-info --pass-pipeline='builtin.module(iree-xnnpack-legalize)' %s | FileCheck %s
+// RUN: iree-opt --iree-plugin=xnnpack --iree-print-plugin-info --pass-pipeline='builtin.module(iree-xnnpack-legalize)' %s | FileCheck %s
 
 // CHECK-LABEL:   func.func private @xnnpack.multiply2(
 // CHECK-SAME:                                    %[[A:.*]]: tensor<?xf32>,

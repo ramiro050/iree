@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "xnnpack_sample/IR/XnnpackOps.h"
+#include "xnnpack/IR/XnnpackOps.h"
 
 #include "mlir/IR/OpImplementation.h"
 
 // clang-format off
 #define GET_OP_CLASSES
-#include "xnnpack_sample/IR/XnnpackOps.cpp.inc" // IWYU pragma: keep
+#include "xnnpack/IR/XnnpackOps.cpp.inc" // IWYU pragma: keep
 // clang-format on

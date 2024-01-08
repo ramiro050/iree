@@ -10,7 +10,7 @@ include "mlir/Pass/PassBase.td"
 #define IREE_XNNPACK_TRANSFORMS_PASSES
 
 def LegalizeXnnpack : Pass<"iree-xnnpack-legalize", "mlir::ModuleOp"> {
-  let summary = "Legalizes the xnnpack sample ops";
+  let summary = "Legalizes the xnnpack ops";
   let constructor = [{
     ::mlir::iree_compiler::IREE::Xnnpack::createLegalizeXnnpackPass()
   }];

@@ -1,4 +1,4 @@
-// RUN: iree-opt --iree-plugin=xnnpack_sample --iree-print-plugin-info --pass-pipeline='builtin.module(iree-stablehlo-to-xnnpack)' %s | FileCheck %s
+// RUN: iree-opt --iree-plugin=xnnpack --iree-print-plugin-info --pass-pipeline='builtin.module(iree-stablehlo-to-xnnpack)' %s | FileCheck %s
 
 // CHECK-LABEL:   func.func @dot_general(
 // CHECK:           %{{.*}} = xnnpack.batch_matrix_multiply

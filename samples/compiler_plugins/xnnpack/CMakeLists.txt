@@ -37,7 +37,7 @@ iree_cc_library(
 
 iree_compiler_register_plugin(
   PLUGIN_ID
-    xnnpack_sample
+    xnnpack
   TARGET
     ::registration
 )
@@ -46,13 +46,13 @@ iree_cc_library(
   NAME
     IR
   HDRS
-    "src/xnnpack_sample/IR/XnnpackDialect.h"
-    "src/xnnpack_sample/IR/XnnpackOps.h"
-    "src/xnnpack_sample/IR/XnnpackOps.h.inc"
+    "src/xnnpack/IR/XnnpackDialect.h"
+    "src/xnnpack/IR/XnnpackOps.h"
+    "src/xnnpack/IR/XnnpackOps.h.inc"
   SRCS
-    "src/xnnpack_sample/IR/XnnpackDialect.cpp"
-    "src/xnnpack_sample/IR/XnnpackOps.cpp"
-    "src/xnnpack_sample/IR/XnnpackOps.cpp.inc"
+    "src/xnnpack/IR/XnnpackDialect.cpp"
+    "src/xnnpack/IR/XnnpackOps.cpp"
+    "src/xnnpack/IR/XnnpackOps.cpp.inc"
   DEPS
     ::XnnpackOpsGen
     ::defs
@@ -67,23 +67,23 @@ iree_tablegen_library(
   NAME
     XnnpackOpsGen
   TD_FILE
-    "src/xnnpack_sample/IR/XnnpackOps.td"
+    "src/xnnpack/IR/XnnpackOps.td"
   OUTS
-    --gen-dialect-decls src/xnnpack_sample/IR/XnnpackDialect.h.inc
-    --gen-dialect-defs src/xnnpack_sample/IR/XnnpackDialect.cpp.inc
-    --gen-op-decls src/xnnpack_sample/IR/XnnpackOps.h.inc
-    --gen-op-defs src/xnnpack_sample/IR/XnnpackOps.cpp.inc
+    --gen-dialect-decls src/xnnpack/IR/XnnpackDialect.h.inc
+    --gen-dialect-defs src/xnnpack/IR/XnnpackDialect.cpp.inc
+    --gen-op-decls src/xnnpack/IR/XnnpackOps.h.inc
+    --gen-op-defs src/xnnpack/IR/XnnpackOps.cpp.inc
 )
 
 iree_cc_library(
   NAME
     Transforms
   HDRS
-    "src/xnnpack_sample/Transforms/Passes.h"
-    "src/xnnpack_sample/Transforms/Passes.h.inc"
+    "src/xnnpack/Transforms/Passes.h"
+    "src/xnnpack/Transforms/Passes.h.inc"
   SRCS
-    "src/xnnpack_sample/Transforms/LegalizeXnnpack.cpp"
-    "src/xnnpack_sample/Transforms/Passes.cpp"
+    "src/xnnpack/Transforms/LegalizeXnnpack.cpp"
+    "src/xnnpack/Transforms/Passes.cpp"
   DEPS
     ::IR
     ::TransformsPassesIncGen
@@ -100,11 +100,11 @@ iree_cc_library(
   NAME
     Conversion
   HDRS
-    "src/xnnpack_sample/Conversion/Passes.h"
-    "src/xnnpack_sample/Conversion/Passes.h.inc"
+    "src/xnnpack/Conversion/Passes.h"
+    "src/xnnpack/Conversion/Passes.h.inc"
   SRCS
-    "src/xnnpack_sample/Conversion/Passes.cpp"
-    "src/xnnpack_sample/Conversion/StablehloToXnnpack.cpp"
+    "src/xnnpack/Conversion/Passes.cpp"
+    "src/xnnpack/Conversion/StablehloToXnnpack.cpp"
   DEPS
     ::ConversionPassesIncGen
     ::IR
@@ -117,27 +117,27 @@ iree_tablegen_library(
   NAME
     TransformsPassesIncGen
   TD_FILE
-    "src/xnnpack_sample/Transforms/Passes.td"
+    "src/xnnpack/Transforms/Passes.td"
   OUTS
-    --gen-pass-decls src/xnnpack_sample/Transforms/Passes.h.inc
+    --gen-pass-decls src/xnnpack/Transforms/Passes.h.inc
 )
 
 iree_tablegen_library(
   NAME
     ConversionPassesIncGen
   TD_FILE
-    "src/xnnpack_sample/Conversion/Passes.td"
+    "src/xnnpack/Conversion/Passes.td"
   OUTS
-    --gen-pass-decls src/xnnpack_sample/Conversion/Passes.h.inc
+    --gen-pass-decls src/xnnpack/Conversion/Passes.h.inc
 )
 
 iree_tablegen_doc(
   NAME
     XnnpackDialectDocGen
   TD_FILE
-    "src/xnnpack_sample/IR/XnnpackOps.td"
+    "src/xnnpack/IR/XnnpackOps.td"
   OUTS
-    --gen-dialect-doc -dialect=xnnpack src/xnnpack_sample/IR/XnnpackDialect.md
+    --gen-dialect-doc -dialect=xnnpack src/xnnpack/IR/XnnpackDialect.md
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

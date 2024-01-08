@@ -6,12 +6,12 @@
 
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xnnpack_sample/Conversion/Passes.h"
-#include "xnnpack_sample/IR/XnnpackDialect.h"
-#include "xnnpack_sample/IR/XnnpackOps.h"
+#include "xnnpack/Conversion/Passes.h"
+#include "xnnpack/IR/XnnpackDialect.h"
+#include "xnnpack/IR/XnnpackOps.h"
 
 #define GEN_PASS_DEF_CONVERTSTABLEHLOTOXNNPACK
-#include "xnnpack_sample/Conversion/Passes.h.inc"
+#include "xnnpack/Conversion/Passes.h.inc"
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {

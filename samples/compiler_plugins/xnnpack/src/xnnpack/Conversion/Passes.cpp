@@ -4,12 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "xnnpack_sample/Conversion/Passes.h"
+#include "xnnpack/Conversion/Passes.h"
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {
 #define GEN_PASS_REGISTRATION
-#include "xnnpack_sample/Conversion/Passes.h.inc"
+#include "xnnpack/Conversion/Passes.h.inc"
 }  // namespace
 
 void registerXnnpackPluginConversionPasses() {

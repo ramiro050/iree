@@ -7,9 +7,9 @@
 #include "iree/compiler/PluginAPI/Client.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xnnpack_sample/Conversion/Passes.h"
-#include "xnnpack_sample/IR/XnnpackDialect.h"
-#include "xnnpack_sample/Transforms/Passes.h"
+#include "xnnpack/Conversion/Passes.h"
+#include "xnnpack/IR/XnnpackDialect.h"
+#include "xnnpack/Transforms/Passes.h"
 
 using namespace mlir;
 using namespace mlir::iree_compiler;
@@ -42,8 +42,8 @@ struct MySession : public PluginSession<MySession, MyOptions> {
 
 IREE_DEFINE_COMPILER_OPTION_FLAGS(MyOptions);
 
-extern "C" bool iree_register_compiler_plugin_xnnpack_sample(
+extern "C" bool iree_register_compiler_plugin_xnnpack(
     mlir::iree_compiler::PluginRegistrar *registrar) {
-  registrar->registerPlugin<MySession>("xnnpack_sample");
+  registrar->registerPlugin<MySession>("xnnpack");
   return true;
 }

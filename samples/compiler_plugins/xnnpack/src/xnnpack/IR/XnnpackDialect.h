@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_SAMPLE_IR_XNNPACKDIALECT_H_
-#define IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_SAMPLE_IR_XNNPACKDIALECT_H_
+#ifndef IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_IR_XNNPACKDIALECT_H_
+#define IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_IR_XNNPACKDIALECT_H_
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 
 // Include generated.
-#include "xnnpack_sample/IR/XnnpackDialect.h.inc"  // IWYU pragma: keep
+#include "xnnpack/IR/XnnpackDialect.h.inc"  // IWYU pragma: keep
 
-#endif  // IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_SAMPLE_IR_XNNPACKDIALECT_H_
+#endif  // IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_IR_XNNPACKDIALECT_H_
