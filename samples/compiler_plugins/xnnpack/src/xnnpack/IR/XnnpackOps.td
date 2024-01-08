@@ -38,6 +38,7 @@ def Xnnpack_BatchMatrixMultiplyOp : Xnnpack_Op<"batch_matrix_multiply", []> {
   let assemblyFormat = [{
     $a `,` $b attr-dict `:` functional-type(operands, results)
   }];
+  let hasVerifier = 1;
 }
 
 #endif
