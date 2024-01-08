@@ -25,6 +25,7 @@ iree_cc_library(
   SRCS
     "src/PluginRegistration.cpp"
   DEPS
+    ::Conversion
     ::IR
     ::Transforms
     ::defs
@@ -82,9 +83,10 @@ iree_cc_library(
     "src/xnnpack_sample/Transforms/Passes.h.inc"
   SRCS
     "src/xnnpack_sample/Transforms/LegalizeXnnpack.cpp"
+    "src/xnnpack_sample/Transforms/Passes.cpp"
   DEPS
     ::IR
-    ::PassesIncGen
+    ::TransformsPassesIncGen
     ::defs
     MLIRFuncDialect
     MLIRIR
@@ -94,13 +96,39 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_library(
+  NAME
+    Conversion
+  HDRS
+    "src/xnnpack_sample/Conversion/Passes.h"
+    "src/xnnpack_sample/Conversion/Passes.h.inc"
+  SRCS
+    "src/xnnpack_sample/Conversion/Passes.cpp"
+    "src/xnnpack_sample/Conversion/StablehloToXnnpack.cpp"
+  DEPS
+    ::ConversionPassesIncGen
+    ::IR
+    MLIRTransforms
+    StablehloOps
+  PUBLIC
+)
+
 iree_tablegen_library(
   NAME
-    PassesIncGen
+    TransformsPassesIncGen
   TD_FILE
     "src/xnnpack_sample/Transforms/Passes.td"
   OUTS
     --gen-pass-decls src/xnnpack_sample/Transforms/Passes.h.inc
+)
+
+iree_tablegen_library(
+  NAME
+    ConversionPassesIncGen
+  TD_FILE
+    "src/xnnpack_sample/Conversion/Passes.td"
+  OUTS
+    --gen-pass-decls src/xnnpack_sample/Conversion/Passes.h.inc
 )
 
 iree_tablegen_doc(
