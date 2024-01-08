@@ -23,9 +23,9 @@ cc_library(
         "src/PluginRegistration.cpp",
     ],
     deps = [
+        ":Conversion",
         ":IR",
         ":Transforms",
-        ":Conversion",
         ":defs",
         "//compiler/src/iree/compiler/PluginAPI",
         "@llvm-project//mlir:IR",
@@ -41,9 +41,9 @@ iree_compiler_register_plugin(
 iree_td_library(
     name = "td_files",
     srcs = [
+        "src/xnnpack_sample/Conversion/Passes.td",
         "src/xnnpack_sample/IR/XnnpackOps.td",
         "src/xnnpack_sample/Transforms/Passes.td",
-        "src/xnnpack_sample/Conversion/Passes.td",
     ],
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -105,8 +105,8 @@ iree_gentbl_cc_library(
 cc_library(
     name = "Transforms",
     srcs = [
-        "src/xnnpack_sample/Transforms/Passes.cpp",
         "src/xnnpack_sample/Transforms/LegalizeXnnpack.cpp",
+        "src/xnnpack_sample/Transforms/Passes.cpp",
     ],
     hdrs = [
         "src/xnnpack_sample/Transforms/Passes.h",
@@ -135,8 +135,8 @@ cc_library(
         "src/xnnpack_sample/Conversion/Passes.h.inc",
     ],
     deps = [
-        ":IR",
         ":ConversionPassesIncGen",
+        ":IR",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
     ],
