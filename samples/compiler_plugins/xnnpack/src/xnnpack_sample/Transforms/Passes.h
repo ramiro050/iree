@@ -15,6 +15,8 @@ namespace mlir::iree_compiler::IREE::Xnnpack {
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeXnnpackPass();
 
+void registerXnnpackPluginTransformsPasses();
+
 }  // namespace mlir::iree_compiler::IREE::Xnnpack
 
 #endif  // IREE_SAMPLES_COMPILER_PLUGINS_XNNPACK_SAMPLE_TRANSFORMS_PASSES_H_

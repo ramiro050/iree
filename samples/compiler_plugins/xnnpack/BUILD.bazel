@@ -105,6 +105,7 @@ iree_gentbl_cc_library(
 cc_library(
     name = "Transforms",
     srcs = [
+        "src/xnnpack_sample/Transforms/Passes.cpp",
         "src/xnnpack_sample/Transforms/LegalizeXnnpack.cpp",
     ],
     hdrs = [

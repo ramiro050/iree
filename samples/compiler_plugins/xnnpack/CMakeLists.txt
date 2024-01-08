@@ -83,6 +83,7 @@ iree_cc_library(
     "src/xnnpack_sample/Transforms/Passes.h.inc"
   SRCS
     "src/xnnpack_sample/Transforms/LegalizeXnnpack.cpp"
+    "src/xnnpack_sample/Transforms/Passes.cpp"
   DEPS
     ::IR
     ::TransformsPassesIncGen

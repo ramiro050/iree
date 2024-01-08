@@ -14,15 +14,6 @@
 using namespace mlir;
 using namespace mlir::iree_compiler;
 
-namespace detail {
-namespace {
-
-#define GEN_PASS_REGISTRATION
-#include "xnnpack_sample/Transforms/Passes.h.inc"
-
-}  // namespace
-}  // namespace detail
-
 namespace {
 
 struct MyOptions {
@@ -31,7 +22,7 @@ struct MyOptions {
 
 struct MySession : public PluginSession<MySession, MyOptions> {
   static void registerPasses() {
-    ::detail::registerPasses();
+    IREE::Xnnpack::registerXnnpackPluginTransformsPasses();
     IREE::Xnnpack::registerXnnpackPluginConversionPasses();
   }
 
