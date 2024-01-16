@@ -29,7 +29,6 @@ cc_library(
         ":defs",
         "//compiler/src/iree/compiler/PluginAPI",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -70,10 +69,7 @@ cc_library(
     deps = [
         ":XnnpackOpsGen",
         ":defs",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -118,9 +114,8 @@ cc_library(
         ":defs",
         "//compiler/src/iree/compiler/Codegen/Dialect/Codegen/IR:IREECodegenDialect",
         "//compiler/src/iree/compiler/Dialect/Flow/IR",
-        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -137,6 +132,11 @@ cc_library(
     deps = [
         ":ConversionPassesIncGen",
         ":IR",
+        ":defs",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
     ],

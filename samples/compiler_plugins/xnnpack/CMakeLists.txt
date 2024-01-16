@@ -30,7 +30,6 @@ iree_cc_library(
     ::Transforms
     ::defs
     MLIRIR
-    MLIRPass
     iree::compiler::PluginAPI
   PUBLIC
 )
@@ -56,10 +55,7 @@ iree_cc_library(
   DEPS
     ::XnnpackOpsGen
     ::defs
-    LLVMSupport
-    MLIRFuncDialect
     MLIRIR
-    MLIRSupport
   PUBLIC
 )
 
@@ -88,9 +84,8 @@ iree_cc_library(
     ::IR
     ::TransformsPassesIncGen
     ::defs
-    MLIRFuncDialect
+    MLIRDialect
     MLIRIR
-    MLIRPass
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::Flow::IR
   PUBLIC
@@ -108,6 +103,11 @@ iree_cc_library(
   DEPS
     ::ConversionPassesIncGen
     ::IR
+    ::defs
+    LLVMSupport
+    MLIRIR
+    MLIRParser
+    MLIRSupport
     MLIRTransforms
     StablehloOps
   PUBLIC

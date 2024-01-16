@@ -6,7 +6,6 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Verifier.h"
