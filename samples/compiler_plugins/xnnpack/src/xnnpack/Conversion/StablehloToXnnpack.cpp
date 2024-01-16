@@ -4,6 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
+#include "mlir/IR/Verifier.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xnnpack/Conversion/Passes.h"
@@ -14,6 +20,40 @@
 #include "xnnpack/Conversion/Passes.h.inc"
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
+
+static llvm::cl::opt<std::string> patternFileName(
+    "xnnpack-pattern-file", llvm::cl::desc("file for pattern bytecode"),
+    llvm::cl::init(""));
+
+LogicalResult parsePatternFromFile(MLIRContext *context,
+                                   llvm::StringRef patternFileName,
+                                   OwningOpRef<ModuleOp> &patternModule) {
+  if (patternFileName.empty()) {
+    return success();
+  }
+
+  // Parse patternFileName content into a ModuleOp.
+  std::string errorMessage;
+  auto memoryBuffer = mlir::openInputFile(patternFileName, &errorMessage);
+  if (!memoryBuffer) {
+    return emitError(FileLineColLoc::get(
+               StringAttr::get(context, patternFileName), 0, 0))
+           << "failed to open pattern file: " << errorMessage;
+  }
+  // Tell sourceMgr about this buffer, the parser will pick it up.
+  llvm::SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(memoryBuffer), llvm::SMLoc());
+  patternModule =
+      OwningOpRef<ModuleOp>(parseSourceFile<ModuleOp>(sourceMgr, context));
+  if (!patternModule) {
+    // Failed to parse the pattern module.
+    // Don't need to emit an error here as the parsing should have already done
+    // that.
+    return failure();
+  }
+  return mlir::verify(*patternModule);
+}
+
 namespace {
 class ConvertDotGeneralOp
     : public OpConversionPattern<mlir::stablehlo::DotGeneralOp> {
@@ -45,7 +85,19 @@ class ConvertStablehloToXnnpackPass
     target.addLegalDialect<IREE::Xnnpack::XnnpackDialect>();
     TypeConverter typeConverter;
     typeConverter.addConversion([](Type type) { return type; });
+
     RewritePatternSet patterns(context);
+
+    // Load patterns from a file if specified.
+    OwningOpRef<ModuleOp> patternModule;
+    if (failed(parsePatternFromFile(context, patternFileName, patternModule))) {
+      return signalPassFailure();
+    }
+    if (patternModule) {
+      PDLPatternModule pdlPattern(patternModule.release());
+      patterns.add(std::move(pdlPattern));
+    }
+
     patterns.add<ConvertDotGeneralOp>(typeConverter, context);
     target.addIllegalOp<stablehlo::DotGeneralOp>();
 
