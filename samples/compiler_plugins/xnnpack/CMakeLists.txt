@@ -106,6 +106,7 @@ iree_cc_library(
     ::defs
     LLVMSupport
     MLIRIR
+    MLIRPDLInterpDialect
     MLIRParser
     MLIRSupport
     MLIRTransforms

@@ -14,12 +14,18 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "batch_matrix_multiply_e2e.mlir"
+    "batch-matrix-multiply-e2e.mlir"
     "mul2-1d-e2e.mlir"
+    "stablehlo-to-xnnpack-using-pdll.mlir"
+    "stablehlo-to-xnnpack.mlir"
     "xnnpack-legalize.mlir"
   TOOLS
     FileCheck
+    iree-compile
     iree-opt
+    iree-run-module
+    mlir-opt
+    mlir-pdll
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

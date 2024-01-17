@@ -17,14 +17,20 @@ iree_lit_test_suite(
     srcs = enforce_glob(
         [
             "mul2-1d-e2e.mlir",
-            "batch_matrix_multiply_e2e.mlir",
+            "batch-matrix-multiply-e2e.mlir",
+            "stablehlo-to-xnnpack.mlir",
+            "stablehlo-to-xnnpack-using-pdll.mlir",
             "xnnpack-legalize.mlir",
         ],
         include = ["*.mlir"],
     ),
     cfg = "//samples:lit.cfg.py",
     tools = [
+        "//tools:iree-compile",
         "//tools:iree-opt",
+        "//tools:iree-run-module",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//mlir:mlir-opt",
+        "@llvm-project//mlir:mlir-pdll",
     ],
 )

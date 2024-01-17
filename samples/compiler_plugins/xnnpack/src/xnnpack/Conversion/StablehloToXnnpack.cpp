@@ -6,6 +6,7 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Verifier.h"
@@ -214,7 +215,8 @@ class ConvertStablehloToXnnpackPass
           ConvertStablehloToXnnpackPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<IREE::Xnnpack::XnnpackDialect>();
+    registry.insert<IREE::Xnnpack::XnnpackDialect,
+                    mlir::pdl_interp::PDLInterpDialect>();
   }
   void runOnOperation() override {
     MLIRContext *context = &getContext();
@@ -234,6 +236,8 @@ class ConvertStablehloToXnnpackPass
     }
 
     patterns.add<ConvertFullyConnectedLayer>(context);
+
+    target.addIllegalOp<mlir::stablehlo::MulOp>();  // PDL Pattern
     target.addDynamicallyLegalOp<mlir::stablehlo::DotGeneralOp>(
         std::not_fn(ConvertFullyConnectedLayer::isFullyConnectedLayer));
 

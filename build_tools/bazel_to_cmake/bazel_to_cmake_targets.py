@@ -67,6 +67,8 @@ class TargetConverter:
                 ],
                 "@llvm-project//mlir:ShapeTransforms": ["MLIRShapeOpsTransforms"],
                 "@llvm-project//mlir:ToLLVMIRTranslation": ["MLIRTargetLLVMIRExport"],
+                "@llvm-project//mlir:mlir-opt": ["mlir-opt"],
+                "@llvm-project//mlir:mlir-pdll": ["mlir-pdll"],
                 "@llvm-project//mlir:mlir-translate": ["mlir-translate"],
                 "@llvm-project//mlir:MlirLspServerLib": ["MLIRLspServerLib"],
                 "@llvm-project//mlir:MlirTableGenMain": ["MLIRTableGen"],
