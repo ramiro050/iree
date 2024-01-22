@@ -25,16 +25,36 @@
 // CHECK:           }
 // CHECK:           return %[[RESULT]] : tensor<?x?x?xf32>
 
+// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w(
+// CHECK-SAME:                                                               %[[A:.*]]: tensor<1x?x?xi8>,
+// CHECK-SAME:                                                               %[[B:.*]]: tensor<?x?xi4>) -> tensor<1x?x?xf32> {
+// CHECK:           %[[OUT:.*]] = tensor.empty(%[[A_DIM_1:.*]], %[[B_DIM_0:.*]]) : tensor<1x?x?xf32>
+// CHECK:           %[[RESULT:.*]] = flow.dispatch.region -> (tensor<1x?x?xf32>{%[[A_DIM_1]], %[[B_DIM_0]]}) {
+// CHECK:             %[[UKERNEL:.*]] = iree_codegen.ukernel.generic "xnnpack.fully_connected_nc_qd8_f32_qc4w_workgroup" ins(%[[A]], %[[B]] : tensor<1x?x?xi8>, tensor<?x?xi4>) outs(%[[OUT]] : tensor<1x?x?xf32>) (%[[A_DIM_0:.*]], %[[A_DIM_1]], %[[A_DIM_2:.*]], %[[B_DIM_0]], %[[B_DIM_1:.*]], %[[A_DIM_0]], %[[A_DIM_1]], %[[B_DIM_0]] : index, index, index, index, index, index, index, index) -> tensor<1x?x?xf32>
+// CHECK:             flow.return %[[UKERNEL]] : tensor<1x?x?xf32>
+// CHECK:           } count() -> (index, index, index) {
+// CHECK:             %[[ONE:.*]] = arith.constant 1 : index
+// CHECK:             flow.return %[[ONE]], %[[ONE]], %[[ONE]] : index, index, index
+// CHECK:           }
+// CHECK:           return %[[RESULT]] : tensor<1x?x?xf32>
+
 // CHECK-LABEL:   func.func @multiply2(
-// CHECK:           %[[VAL_2:.*]] = call @xnnpack.multiply2
+// CHECK:           %{{.*}} = call @xnnpack.multiply2
 func.func @multiply2(%a : tensor<?xf32>, %b : tensor<?xf32>) -> tensor<?xf32> {
   %c = xnnpack.multiply2 %a, %b : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   func.return %c : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func.func @batch_matrix_multiply(
-// CHECK:           %[[VAL_2:.*]] = call @xnnpack.batch_matrix_multiply
+// CHECK:           %{{.*}} = call @xnnpack.batch_matrix_multiply
 func.func @batch_matrix_multiply(%a : tensor<?x?x?xf32>, %b : tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %c = xnnpack.batch_matrix_multiply %a, %b : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   func.return %c : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL:   func.func @fully_connected(
+// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w
+func.func @fully_connected(%a : tensor<1x?x?xi8>, %b : tensor<?x?xi4>) -> tensor<1x?x?xf32> {
+  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %a, %b : (tensor<1x?x?xi8>, tensor<?x?xi4>) -> tensor<1x?x?xf32>
+  func.return %c : tensor<1x?x?xf32>
 }

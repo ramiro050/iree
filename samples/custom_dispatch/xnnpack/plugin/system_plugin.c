@@ -25,8 +25,10 @@
 // instead except when debugging/profiling.
 
 #include <assert.h>
+#include <float.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <xnnpack.h>
 
 // The only header required from IREE:
@@ -40,6 +42,103 @@ typedef struct {
   iree_hal_executable_plugin_allocator_t host_allocator;
   FILE* file;
 } system_plugin_t;
+
+static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
+                                                     void* context,
+                                                     void* reserved) {
+  system_plugin_t* plugin = (system_plugin_t*)context;
+  typedef struct {
+    const int8_t* restrict binding0;
+    size_t binding0_offset;
+    size_t binding0_stride0;
+    size_t binding0_stride1;
+    size_t binding0_stride2;
+    const int8_t* restrict binding1;
+    size_t binding1_offset;
+    size_t binding1_stride0;
+    size_t binding1_stride1;
+    float* restrict binding2;
+    size_t binding2_offset;
+    size_t binding2_stride0;
+    size_t binding2_stride1;
+    size_t binding2_stride2;
+    size_t binding0_size0;
+    size_t binding0_size1;
+    size_t binding0_size2;
+    size_t binding1_size0;
+    size_t binding1_size1;
+    size_t binding2_size0;
+    size_t binding2_size1;
+    size_t binding2_size2;
+  } params_t;
+  const params_t* params = (const params_t*)params_ptr;
+
+  enum xnn_status status;
+  const struct xnn_allocator* allocator = NULL;
+  status = xnn_initialize(allocator);
+  assert(status == xnn_status_success && "unable to initialize XNNPACK");
+  assert(params->binding0_size0 == 1 && "unsupported input size");
+  assert(params->binding0_size2 == params->binding1_size1 &&
+         "invalid fully connected reduction");
+
+  const size_t batch_size = params->binding0_size1;
+  const size_t input_channels = params->binding0_size2;
+  const size_t output_channels = params->binding1_size0;
+  assert((input_channels & 1) == 0 && "`input_channels` must be even");
+  // TODO: XNNPACK expects this value to be 8. From testing, this value is
+  // subtracted from the kernel before using it in the matrix multiplication.
+  // For IREE's use-case, this value should be 0.
+  const size_t kernel_zero_point = 8;
+  const float output_min = -FLT_MAX;
+  const float output_max = FLT_MAX;
+  // TODO: XNNPACK expects the input tensor to be padded by `XNN_EXTRA_BYTES`.
+  // This padding should happen on the IREE side.
+  const int8_t* input = &(params->binding0[params->binding0_offset]);
+  // TODO: handle sub-byte offset
+  assert(params->binding1_offset == 0 &&
+         "unimplemented: non-zero offset for kernel buffer");
+  const void* kernel = params->binding1;
+  float* output = &(params->binding2[params->binding2_offset]);
+
+  // TODO: figure out a way to avoid this allocation. From testing, passing NULL
+  // seems to make the scale default to 0, which is not what we want.
+  float* kernel_scale = malloc(output_channels * sizeof(float));
+  for (size_t i = 0; i < output_channels; i++) kernel_scale[i] = 1;
+
+  xnn_operator_t fc_op = NULL;
+  status = xnn_create_fully_connected_nc_qd8_f32_qc4w(
+      input_channels, output_channels, /*input_stride=*/input_channels,
+      /*output_stride=*/output_channels, kernel_zero_point, kernel_scale,
+      kernel, /*bias=*/NULL, output_min, output_max, /*flags=*/0,
+      /*code_cache=*/NULL,
+      /*weights_cache=*/NULL, &fc_op);
+  assert(status == xnn_status_success && "unable to create fully connected op");
+  status = xnn_reshape_fully_connected_nc_qd8_f32_qc4w(fc_op, batch_size,
+                                                       /*threadpool=*/NULL);
+  assert(status == xnn_status_success &&
+         "unable to reshape fully connected op");
+
+  // TODO: avoid this allocation
+  struct xnn_dynamic_quantization_params* quantization_params =
+      malloc(sizeof(struct xnn_dynamic_quantization_params) *
+             (batch_size + XNN_EXTRA_QUANTIZATION_PARAMS));
+  for (size_t i = 0; i < batch_size + XNN_EXTRA_QUANTIZATION_PARAMS; i++) {
+    quantization_params[i].zero_point = 0;
+    quantization_params[i].scale = 1;
+  }
+  status = xnn_setup_fully_connected_nc_qd8_f32_qc4w(
+      fc_op, input, output, /*quantization_params=*/quantization_params);
+  assert(status == xnn_status_success && "unable to setup fully connected op");
+
+  status = xnn_run_operator(fc_op, /*threadpool=*/NULL);
+  assert(status == xnn_status_success && "unable to run fully connected op");
+
+  status = xnn_deinitialize();
+  assert(status == xnn_status_success && "unable to deinitialize");
+  free(quantization_params);
+  free(kernel_scale);
+  return 0;
+}
 
 static int multiply2_1d_workgroup(void* params_ptr, void* context,
                                   void* reserved) {
@@ -313,6 +412,12 @@ static iree_hal_executable_plugin_status_t system_plugin_resolve(
                    symbol_name, "xnnpack.batch_matrix_multiply_workgroup") ==
                0) {
       params->out_fn_ptrs[i] = batch_matrix_multiply_workgroup;
+      params->out_fn_contexts[i] =
+          plugin;  // passing plugin to each import call
+    } else if (iree_hal_executable_plugin_strcmp(
+                   symbol_name,
+                   "xnnpack.fully_connected_nc_qd8_f32_qc4w_workgroup") == 0) {
+      params->out_fn_ptrs[i] = fully_connected_nc_qd8_f32_qc4w_workgroup;
       params->out_fn_contexts[i] =
           plugin;  // passing plugin to each import call
     } else {
