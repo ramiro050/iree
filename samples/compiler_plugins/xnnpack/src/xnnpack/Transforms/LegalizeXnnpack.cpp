@@ -16,10 +16,10 @@
 #include "xnnpack/IR/XnnpackOps.h"
 #include "xnnpack/Transforms/Passes.h"
 
+namespace mlir::iree_compiler::IREE::Xnnpack {
 #define GEN_PASS_DEF_LEGALIZEXNNPACK
 #include "xnnpack/Transforms/Passes.h.inc"
 
-namespace mlir::iree_compiler::IREE::Xnnpack {
 namespace {
 static FailureOr<func::FuncOp> createFuncOp(
     RewriterBase &rewriter, Location loc, FunctionType type,
@@ -177,8 +177,13 @@ static FailureOr<func::FuncOp> createUKernelGeneric(
 }
 
 class LegalizeXnnpackPass
-    : public ::impl::LegalizeXnnpackBase<LegalizeXnnpackPass> {
+    : public impl::LegalizeXnnpackBase<LegalizeXnnpackPass> {
  public:
+  LegalizeXnnpackPass() = default;
+  LegalizeXnnpackPass(const LegalizeXnnpackPass &) {}
+  LegalizeXnnpackPass(const LegalizeXnnpackOptions &options) {
+    xnnpackThreads.setValue(options.xnnpackThreads);
+  }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, IREE::Flow::FlowDialect,
                     IREE::Codegen::IREECodegenDialect>();
@@ -210,9 +215,5 @@ class LegalizeXnnpackPass
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeXnnpackPass() {
-  return std::make_unique<LegalizeXnnpackPass>();
-}
 
 }  // namespace mlir::iree_compiler::IREE::Xnnpack

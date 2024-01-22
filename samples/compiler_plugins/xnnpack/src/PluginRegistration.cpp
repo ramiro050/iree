@@ -34,7 +34,7 @@ struct MySession : public PluginSession<MySession, MyOptions> {
 
   void extendPreprocessingPassPipeline(OpPassManager &pm) override {
     pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpackPass());
-    pm.addPass(IREE::Xnnpack::createLegalizeXnnpackPass());
+    pm.addPass(IREE::Xnnpack::createLegalizeXnnpack());
   }
 };
 
