@@ -42,6 +42,7 @@
 typedef struct {
   iree_hal_executable_plugin_allocator_t host_allocator;
   FILE* file;
+  pthreadpool_t threadpool;
 } system_plugin_t;
 
 static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
@@ -75,7 +76,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
 
-  const pthreadpool_t threadpool = pthreadpool_create(params->threads);
+  const pthreadpool_t threadpool = plugin->threadpool;
   assert(threadpool && "unable to create threadpool");
 
   enum xnn_status status;
@@ -138,7 +139,6 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
 
   free(quantization_params);
   free(kernel_scale);
-  pthreadpool_destroy(threadpool);
   return 0;
 }
 
@@ -368,6 +368,15 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
   // stateful/side-effecting things.
   plugin->file = stdout;
 
+  // TODO: make this a flag
+  const size_t num_of_threads = 1;
+  const pthreadpool_t threadpool = pthreadpool_create(num_of_threads);
+  if (!threadpool) {
+    return iree_hal_executable_plugin_status_from_code(
+        IREE_HAL_EXECUTABLE_PLUGIN_STATUS_ABORTED);
+  }
+  plugin->threadpool = threadpool;
+
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
   return iree_hal_executable_plugin_ok_status();
@@ -375,8 +384,11 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
 
 // Called to free any plugin state allocated in load.
 static void system_plugin_unload(void* self) {
-  xnn_deinitialize();
   system_plugin_t* plugin = (system_plugin_t*)self;
+
+  xnn_deinitialize();
+  pthreadpool_destroy(plugin->threadpool);
+
   iree_hal_executable_plugin_allocator_t host_allocator =
       plugin->host_allocator;
 
