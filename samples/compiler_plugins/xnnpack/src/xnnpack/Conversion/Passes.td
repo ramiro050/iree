@@ -11,9 +11,6 @@ include "mlir/Pass/PassBase.td"
 
 def ConvertStablehloToXnnpack : Pass<"iree-stablehlo-to-xnnpack", "mlir::ModuleOp"> {
   let summary = "Convert StableHLO ops to XNNPACK dialect ops";
-  let constructor = [{
-    ::mlir::iree_compiler::IREE::Xnnpack::createConvertStablehloToXnnpackPass()
-  }];
 }
 
 #endif // IREE_XNNPACK_CONVERSION_PASSES

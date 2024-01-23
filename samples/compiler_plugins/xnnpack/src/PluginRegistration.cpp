@@ -45,7 +45,7 @@ struct XnnpackSession : public PluginSession<XnnpackSession, XnnpackOptions> {
     IREE::Xnnpack::LegalizeXnnpackOptions legalizeXnnpackOptions;
     legalizeXnnpackOptions.xnnpackThreads = options.xnnpackThreads;
 
-    pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpackPass());
+    pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpack());
     pm.addPass(IREE::Xnnpack::createLegalizeXnnpack(legalizeXnnpackOptions));
   }
 };
