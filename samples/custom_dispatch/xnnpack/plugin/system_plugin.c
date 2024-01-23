@@ -27,6 +27,7 @@
 #include <assert.h>
 #include <float.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <xnnpack.h>
@@ -70,8 +71,12 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     size_t binding2_size0;
     size_t binding2_size1;
     size_t binding2_size2;
+    size_t threads;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
+
+  const pthreadpool_t threadpool = pthreadpool_create(params->threads);
+  assert(threadpool && "unable to create threadpool");
 
   enum xnn_status status;
   const struct xnn_allocator* allocator = NULL;
@@ -113,8 +118,9 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
       /*code_cache=*/NULL,
       /*weights_cache=*/NULL, &fc_op);
   assert(status == xnn_status_success && "unable to create fully connected op");
-  status = xnn_reshape_fully_connected_nc_qd8_f32_qc4w(fc_op, batch_size,
-                                                       /*threadpool=*/NULL);
+  status =
+      xnn_reshape_fully_connected_nc_qd8_f32_qc4w(fc_op, batch_size,
+                                                  /*threadpool=*/threadpool);
   assert(status == xnn_status_success &&
          "unable to reshape fully connected op");
 
@@ -130,13 +136,14 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
       fc_op, input, output, /*quantization_params=*/quantization_params);
   assert(status == xnn_status_success && "unable to setup fully connected op");
 
-  status = xnn_run_operator(fc_op, /*threadpool=*/NULL);
+  status = xnn_run_operator(fc_op, /*threadpool=*/threadpool);
   assert(status == xnn_status_success && "unable to run fully connected op");
 
   status = xnn_deinitialize();
   assert(status == xnn_status_success && "unable to deinitialize");
   free(quantization_params);
   free(kernel_scale);
+  pthreadpool_destroy(threadpool);
   return 0;
 }
 
@@ -156,8 +163,10 @@ static int multiply2_1d_workgroup(void* params_ptr, void* context,
     size_t binding0_size;
     size_t binding1_size;
     size_t binding2_size;
+    size_t threads;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
+  assert(params->threads == 1 && "unimplemented: threadpool support");
 
   enum xnn_status status;
   const struct xnn_allocator* allocator = NULL;
@@ -266,8 +275,10 @@ static int batch_matrix_multiply_workgroup(void* params_ptr, void* context,
     size_t binding2_size0;
     size_t binding2_size1;
     size_t binding2_size2;
+    size_t threads;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
+  assert(params->threads == 1 && "unimplemented: threadpool support");
 
   enum xnn_status status;
   const struct xnn_allocator* allocator = NULL;
