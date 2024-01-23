@@ -18,10 +18,9 @@
 #include "xnnpack/IR/XnnpackDialect.h"
 #include "xnnpack/IR/XnnpackOps.h"
 
+namespace mlir::iree_compiler::IREE::Xnnpack {
 #define GEN_PASS_DEF_CONVERTSTABLEHLOTOXNNPACK
 #include "xnnpack/Conversion/Passes.h.inc"
-
-namespace mlir::iree_compiler::IREE::Xnnpack {
 
 static llvm::cl::opt<std::string> patternFileName(
     "xnnpack-pattern-file", llvm::cl::desc("file for pattern bytecode"),
@@ -211,7 +210,7 @@ class ConvertFullyConnectedLayer
 
 namespace {
 class ConvertStablehloToXnnpackPass
-    : public ::impl::ConvertStablehloToXnnpackBase<
+    : public impl::ConvertStablehloToXnnpackBase<
           ConvertStablehloToXnnpackPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -249,9 +248,4 @@ class ConvertStablehloToXnnpackPass
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createConvertStablehloToXnnpackPass() {
-  return std::make_unique<ConvertStablehloToXnnpackPass>();
-}
-
 }  // namespace mlir::iree_compiler::IREE::Xnnpack
