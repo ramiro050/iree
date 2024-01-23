@@ -43,12 +43,12 @@ def Xnnpack_BatchMatrixMultiplyOp : Xnnpack_Op<"batch_matrix_multiply", []> {
 // TODO: Add bias and activation parameters
 def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w", []> {
   let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
-  let arguments = (ins AnyRankedTensor:$a,
-                       AnyRankedTensor:$b);
+  let arguments = (ins AnyRankedTensor:$input,
+                       AnyRankedTensor:$kernel);
   let results = (outs AnyRankedTensor:$result);
 
   let assemblyFormat = [{
-    $a `,` $b attr-dict `:` functional-type(operands, results)
+    $input `,` $kernel attr-dict `:` functional-type(operands, results)
   }];
 }
 
