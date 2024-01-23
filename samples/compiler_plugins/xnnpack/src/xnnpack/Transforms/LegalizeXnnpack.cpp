@@ -87,13 +87,15 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
     }
     dims.push_back({dims[0][0]});
   } else if (auto fullyConnected = dyn_cast<FullyConnectedNcQd8F32Qc4wOp>(op)) {
-    auto typeA = fullyConnected.getA().getType().cast<RankedTensorType>();
-    auto typeB = fullyConnected.getB().getType().cast<RankedTensorType>();
-    if (typeA.getRank() != 3 && typeA.getShape()[0] != 1) {
+    auto inputType =
+        fullyConnected.getInput().getType().cast<RankedTensorType>();
+    auto kernelType =
+        fullyConnected.getKernel().getType().cast<RankedTensorType>();
+    if (inputType.getRank() != 3 && inputType.getShape()[0] != 1) {
       return op->emitError(
           "unimplemented: input with rank != 3 and first dimension size != 1");
     }
-    if (typeB.getRank() != 2) {
+    if (kernelType.getRank() != 2) {
       return op->emitError("unimplemented: kernel of rank != 2");
     }
     // Fully connected performs a reduction along the right-most dimension of
