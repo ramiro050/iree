@@ -29,7 +29,7 @@ struct XnnpackOptions {
   }
 };
 
-struct MySession : public PluginSession<MySession, XnnpackOptions> {
+struct XnnpackSession : public PluginSession<XnnpackSession, XnnpackOptions> {
   static void registerPasses() {
     IREE::Xnnpack::registerXnnpackPluginTransformsPasses();
     IREE::Xnnpack::registerXnnpackPluginConversionPasses();
@@ -56,6 +56,6 @@ IREE_DEFINE_COMPILER_OPTION_FLAGS(XnnpackOptions);
 
 extern "C" bool iree_register_compiler_plugin_xnnpack(
     mlir::iree_compiler::PluginRegistrar *registrar) {
-  registrar->registerPlugin<MySession>("xnnpack");
+  registrar->registerPlugin<XnnpackSession>("xnnpack");
   return true;
 }
