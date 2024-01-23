@@ -79,9 +79,6 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   assert(threadpool && "unable to create threadpool");
 
   enum xnn_status status;
-  const struct xnn_allocator* allocator = NULL;
-  status = xnn_initialize(allocator);
-  assert(status == xnn_status_success && "unable to initialize XNNPACK");
   assert(params->binding0_size0 == 1 && "unsupported input size");
   assert(params->binding0_size2 == params->binding1_size1 &&
          "invalid fully connected reduction");
@@ -139,8 +136,6 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   status = xnn_run_operator(fc_op, /*threadpool=*/threadpool);
   assert(status == xnn_status_success && "unable to run fully connected op");
 
-  status = xnn_deinitialize();
-  assert(status == xnn_status_success && "unable to deinitialize");
   free(quantization_params);
   free(kernel_scale);
   pthreadpool_destroy(threadpool);
@@ -169,10 +164,6 @@ static int multiply2_1d_workgroup(void* params_ptr, void* context,
   assert(params->threads == 1 && "unimplemented: threadpool support");
 
   enum xnn_status status;
-  const struct xnn_allocator* allocator = NULL;
-  status = xnn_initialize(allocator);
-  assert(status == xnn_status_success && "unable to initialize XNNPACK");
-
   xnn_subgraph_t subgraph = NULL;
   status =
       xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph);
@@ -232,8 +223,6 @@ static int multiply2_1d_workgroup(void* params_ptr, void* context,
   assert(status == xnn_status_success && "unable to delete runtime");
   status = xnn_delete_subgraph(subgraph);
   assert(status == xnn_status_success && "unable to delete subgraph");
-  status = xnn_deinitialize();
-  assert(status == xnn_status_success && "unable to deinitialize");
 
   for (size_t i = 0; i < params->binding0_size; ++i) {
     float curr_lhs = params->binding0[params->binding0_offset + i];
@@ -281,10 +270,6 @@ static int batch_matrix_multiply_workgroup(void* params_ptr, void* context,
   assert(params->threads == 1 && "unimplemented: threadpool support");
 
   enum xnn_status status;
-  const struct xnn_allocator* allocator = NULL;
-  status = xnn_initialize(allocator);
-  assert(status == xnn_status_success && "unable to initialize XNNPACK");
-
   xnn_subgraph_t subgraph = NULL;
   status =
       xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph);
@@ -349,8 +334,6 @@ static int batch_matrix_multiply_workgroup(void* params_ptr, void* context,
   assert(status == xnn_status_success && "unable to delete runtime");
   status = xnn_delete_subgraph(subgraph);
   assert(status == xnn_status_success && "unable to delete subgraph");
-  status = xnn_deinitialize();
-  assert(status == xnn_status_success && "unable to deinitialize");
   return 0;
 }
 
@@ -367,6 +350,12 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
     const iree_hal_executable_plugin_environment_v0_t* environment,
     size_t param_count, const iree_hal_executable_plugin_string_pair_t* params,
     void** out_self) {
+  const struct xnn_allocator* allocator = NULL;
+  enum xnn_status xnn_status = xnn_initialize(allocator);
+  if (xnn_status != xnn_status_success) {
+    return iree_hal_executable_plugin_status_from_code(
+        IREE_HAL_EXECUTABLE_PLUGIN_STATUS_ABORTED);
+  }
   // Allocate the plugin state.
   system_plugin_t* plugin = NULL;
   iree_hal_executable_plugin_status_t status =
@@ -386,6 +375,7 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
 
 // Called to free any plugin state allocated in load.
 static void system_plugin_unload(void* self) {
+  xnn_deinitialize();
   system_plugin_t* plugin = (system_plugin_t*)self;
   iree_hal_executable_plugin_allocator_t host_allocator =
       plugin->host_allocator;
