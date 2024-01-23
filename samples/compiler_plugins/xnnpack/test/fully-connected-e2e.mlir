@@ -11,11 +11,11 @@
 
 // CHECK-SYSTEM: EXEC @main
 // CHECK-SYSTEM: 1x2x4xf32={{\[}}[16 16 16 16][16 16 16 16]]
-func.func @main(%a : tensor<1x2x8xi8>, %b : tensor<4x8xi8>, %offset : tensor<4x8xi8>) -> tensor<1x2x4xf32> {
+func.func @main(%input : tensor<1x2x8xi8>, %kernel : tensor<4x8xi8>, %offset : tensor<4x8xi8>) -> tensor<1x2x4xf32> {
   // TODO: Avoid doing this addition.
-  // Currently, XNNPACK will subtract the weight by 8, so here 8 is added to the weight.
-  %b_adjusted = stablehlo.add %b, %offset : (tensor<4x8xi8>, tensor<4x8xi8>) -> tensor<4x8xi8>
-  %b_i4 = stablehlo.convert %b_adjusted : (tensor<4x8xi8>) -> tensor<4x8xi4>
-  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %a, %b_i4 : (tensor<1x2x8xi8>, tensor<4x8xi4>) -> tensor<1x2x4xf32>
+  // Currently, XNNPACK will subtract the kernel by 8, so here 8 is added to the weight.
+  %kernel_adjusted = stablehlo.add %kernel, %offset : (tensor<4x8xi8>, tensor<4x8xi8>) -> tensor<4x8xi8>
+  %kernel_i4 = stablehlo.convert %kernel_adjusted : (tensor<4x8xi8>) -> tensor<4x8xi4>
+  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %input, %kernel_i4 : (tensor<1x2x8xi8>, tensor<4x8xi4>) -> tensor<1x2x4xf32>
   func.return %c : tensor<1x2x4xf32>
 }

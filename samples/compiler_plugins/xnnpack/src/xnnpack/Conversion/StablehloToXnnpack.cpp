@@ -76,7 +76,7 @@ static Value getConvertedValue(Value val) {
 
 namespace {
 // A fully connected layer is a sequence of stablehlo ops that behave as the
-// computation `matmul(input, weight.T()) + bias`.
+// computation `matmul(input, kernel.T()) + bias`.
 //
 // See `ConvertFullyConnectedLayer::getFullyConnectedInfo` for the constraints
 // on the fully connected layer pattern.
@@ -105,23 +105,23 @@ class ConvertFullyConnectedLayer
     auto info = *maybeInfo;
 
     auto inputType = info.input.getType().cast<RankedTensorType>();
-    auto weightType = info.weight.getType().cast<RankedTensorType>();
+    auto kernelType = info.kernel.getType().cast<RankedTensorType>();
     auto outputType = info.output.getType().cast<RankedTensorType>();
     if (!inputType.getElementType().isInteger(8) ||
-        !weightType.getElementType().isInteger(4) ||
+        !kernelType.getElementType().isInteger(4) ||
         !outputType.getElementType().isF32()) {
       return error(
-          "unimplemented: fully connected layer without i8 input, i4 weight, "
+          "unimplemented: fully connected layer without i8 input, i4 kernel, "
           "or f32 output");
     }
 
     if (info.needsTranspose) {
-      int64_t weightRank = weightType.getRank();
-      SmallVector<int64_t> perm(llvm::to_vector(llvm::seq(weightRank)));
+      int64_t kernelRank = kernelType.getRank();
+      SmallVector<int64_t> perm(llvm::to_vector(llvm::seq(kernelRank)));
       std::swap(perm[perm.size() - 1], perm[perm.size() - 2]);
       DenseIntElementsAttr permAttr = rewriter.getI64TensorAttr(perm);
-      info.weight = rewriter.create<stablehlo::TransposeOp>(
-          op.getLoc(), info.weight, permAttr);
+      info.kernel = rewriter.create<stablehlo::TransposeOp>(
+          op.getLoc(), info.kernel, permAttr);
     }
 
     Operation *outputDefiningOp = info.output.getDefiningOp();
@@ -129,7 +129,7 @@ class ConvertFullyConnectedLayer
     // be removed to avoid having the pattern applied again to it.
     if (outputDefiningOp != op) rewriter.eraseOp(op);
     rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        outputDefiningOp, outputType, info.input, info.weight);
+        outputDefiningOp, outputType, info.input, info.kernel);
     return success();
   }
 
@@ -137,20 +137,20 @@ class ConvertFullyConnectedLayer
   // Inputs and outputs of the matched fully connected layer pattern.
   //
   // The fully connected op performs a reduction along the last dimension of
-  // both the input and the weight. In other words:
-  //   `reduction_ik = input_ij * weight_kj`
+  // both the input and the kernel. In other words:
+  //   `reduction_ik = input_ij * kernel_kj`
   // Therefore, if the matched `stablehlo.dot_general` op is performing
-  // the reduction along the first non-batch dimension of the weight
+  // the reduction along the first non-batch dimension of the kernel
   // (regular batch matrix multiplication), we need to transpose the last two
-  // dimensions of the weight tensor before computing the fully connected layer.
-  // The `needsTranspose` variable is true if such a tranpose of the weight is
+  // dimensions of the kernel tensor before computing the fully connected layer.
+  // The `needsTranspose` variable is true if such a tranpose of the kernel is
   // needed.
   struct FullyConnectedInfo {
     Value input;
-    Value weight;
+    Value kernel;
     Value output;
-    bool needsTranspose;  // Weight needs transpose before reduction `input_ij
-                          // weight_kj`
+    bool needsTranspose;  // Kernel needs transpose before reduction `input_ij
+                          // kernel_kj`
   };
 
   // Get the `stablehlo.dot_general`'s inputs before any casts and its output
@@ -188,12 +188,12 @@ class ConvertFullyConnectedLayer
 
     FullyConnectedInfo info;
     info.input = getUnconvertedValue(lhs);
-    info.weight = getUnconvertedValue(rhs);
+    info.kernel = getUnconvertedValue(rhs);
     info.output = getConvertedValue(op.getResult());
     info.needsTranspose = rhsContractingDim - rhsBatchDimsCount == 0;
 
     auto inputType = info.input.getType().cast<RankedTensorType>();
-    auto weightType = info.weight.getType().cast<RankedTensorType>();
+    auto kernelType = info.kernel.getType().cast<RankedTensorType>();
     if (inputType.getRank() > 2) {
       for (int64_t dimSize : inputType.getShape().drop_back(2)) {
         if (dimSize != 1) {
@@ -202,8 +202,8 @@ class ConvertFullyConnectedLayer
         }
       }
     }
-    if (weightType.getRank() != 2)
-      return error("unimplemented: weight with rank > 2");
+    if (kernelType.getRank() != 2)
+      return error("unimplemented: kernel with rank > 2");
     return info;
   }
 };

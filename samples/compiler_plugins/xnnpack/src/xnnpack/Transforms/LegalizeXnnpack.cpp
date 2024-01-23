@@ -94,11 +94,11 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
           "unimplemented: input with rank != 3 and first dimension size != 1");
     }
     if (typeB.getRank() != 2) {
-      return op->emitError("unimplemented: weight of rank != 2");
+      return op->emitError("unimplemented: kernel of rank != 2");
     }
     // Fully connected performs a reduction along the right-most dimension of
-    // the input and the weight.
-    // output shape = [input.dim(0), input.dim(1), weight.dim(0)]
+    // the input and the kernel.
+    // output shape = [input.dim(0), input.dim(1), kernel.dim(0)]
     dims.push_back({dims[0][0], dims[0][1], dims[1][0]});
   } else {
     llvm_unreachable("not an xnnpack op!");
