@@ -7,6 +7,7 @@
 #include "iree/hal/local/plugins/registration/init.h"
 
 #include "iree/base/internal/flags.h"
+#include "iree/base/string_view.h"
 
 #if defined(IREE_HAVE_HAL_EXECUTABLE_SYSTEM_LIBRARY_PLUGIN)
 #include "iree/hal/local/plugins/system_library_plugin.h"
@@ -15,6 +16,13 @@
 #if defined(IREE_HAVE_HAL_EXECUTABLE_EMBEDDED_ELF_PLUGIN)
 #include "iree/hal/local/plugins/embedded_elf_plugin.h"
 #endif  // IREE_HAVE_HAL_EXECUTABLE_EMBEDDED_ELF_PLUGIN
+
+// TODO: figure out a better place for this
+// Also, having the type be `string` is a bit awkward
+IREE_FLAG(
+    string, xnnpack_thread_count, /*default=*/"0",
+    "Number of threads to use in XNNPACK's threadpool.\n"
+    "A value of 0 defaults to the number of logical processors in the system.");
 
 IREE_FLAG_LIST(
     string, executable_plugin,
@@ -81,8 +89,10 @@ iree_status_t iree_hal_register_executable_plugin_from_spec(
     iree_allocator_t host_allocator) {
   // TODO(benvanik): support parameterization via ?query or something.
   iree_string_view_t path = spec;
-  iree_host_size_t param_count = 0;
+  iree_host_size_t param_count = 1;
   iree_string_pair_t params[1];
+  params[0] =
+      iree_make_cstring_pair("xnnpack-thread-count", FLAG_xnnpack_thread_count);
 
   // NOTE: it's possible for no plugins to be enabled.
   (void)path;

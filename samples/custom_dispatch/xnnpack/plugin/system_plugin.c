@@ -30,6 +30,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <xnnpack.h>
 
 // The only header required from IREE:
@@ -367,9 +368,19 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
   // stateful/side-effecting things.
   plugin->file = stdout;
 
-  // TODO: make this a flag
-  const size_t num_of_threads = 1;
-  const pthreadpool_t threadpool = pthreadpool_create(num_of_threads);
+  size_t thread_count = 0;
+  for (size_t i = 0; i < param_count; i++) {
+    if (strncmp("xnnpack-thread-count", params[i].key.data,
+                params[i].key.size) == 0) {
+      // `iree_hal_executable_plugin_string_t`s are not guaranteed to be null
+      // terminated.
+      char flag_val[params[i].value.size + 1];
+      strncpy(flag_val, params[i].value.data, params[i].value.size);
+      flag_val[params[i].value.size] = '\0';
+      thread_count = strtol(flag_val, NULL, 10);
+    }
+  }
+  const pthreadpool_t threadpool = pthreadpool_create(thread_count);
   if (!threadpool) {
     return iree_hal_executable_plugin_status_from_code(
         IREE_HAL_EXECUTABLE_PLUGIN_STATUS_ABORTED);
