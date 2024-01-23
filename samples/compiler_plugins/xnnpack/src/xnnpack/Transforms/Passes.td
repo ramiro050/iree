@@ -11,10 +11,6 @@ include "mlir/Pass/PassBase.td"
 
 def LegalizeXnnpack : Pass<"iree-xnnpack-legalize", "mlir::ModuleOp"> {
   let summary = "Legalizes the xnnpack ops";
-  let options = [
-    Option<"xnnpackThreads", "xnnpack-threads", "size_t", "/*default=*/1",
-           "Number of threads in XNNPACK threadpool.">,
-  ];
 }
 
 #endif // IREE_XNNPACK_TRANSFORMS_PASSES

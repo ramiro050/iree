@@ -72,7 +72,6 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     size_t binding2_size0;
     size_t binding2_size1;
     size_t binding2_size2;
-    size_t threads;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
 
@@ -158,10 +157,10 @@ static int multiply2_1d_workgroup(void* params_ptr, void* context,
     size_t binding0_size;
     size_t binding1_size;
     size_t binding2_size;
-    size_t threads;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
-  assert(params->threads == 1 && "unimplemented: threadpool support");
+  assert(pthreadpool_get_threads_count(plugin->threadpool) == 1 &&
+         "unimplemented: threadpool support");
 
   enum xnn_status status;
   xnn_subgraph_t subgraph = NULL;
@@ -264,10 +263,10 @@ static int batch_matrix_multiply_workgroup(void* params_ptr, void* context,
     size_t binding2_size0;
     size_t binding2_size1;
     size_t binding2_size2;
-    size_t threads;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
-  assert(params->threads == 1 && "unimplemented: threadpool support");
+  assert(pthreadpool_get_threads_count(plugin->threadpool) == 1 &&
+         "unimplemented: threadpool support");
 
   enum xnn_status status;
   xnn_subgraph_t subgraph = NULL;
