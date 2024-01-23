@@ -12,8 +12,8 @@
 #include "mlir/Pass/PassManager.h"
 
 namespace mlir::iree_compiler::IREE::Xnnpack {
-
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeXnnpackPass();
+#define GEN_PASS_DECL
+#include "xnnpack/Transforms/Passes.h.inc"
 
 void registerXnnpackPluginTransformsPasses();
 
