@@ -1,3 +1,25 @@
+
 Pattern => replace op<stablehlo.multiply>(operands: ValueRange) with
                    op<xnnpack.multiply2>(operands);
 
+// External constraints for type checking
+Constraint CheckI4RankedTensorType(value: Value);
+Constraint CheckI8RankedTensorType(value: Value);
+Constraint CheckI32RankedTensorType(value: Value);
+Constraint CheckF32RankedTensorType(value: Value);
+
+Pattern {
+  let i8_input : Value;  // lhs
+  let i4_input : Value;  // rhs
+  let cvt_i4_i8 = op<stablehlo.convert>(i4_input);       // rhs: i4 -> i8
+  let dot_general = op<stablehlo.dot_general>(i8_input, cvt_i4_i8);
+  let cvt_i32_f32 = op<stablehlo.convert>(dot_general);  // result: i32 -> f32
+
+  CheckI4RankedTensorType(i4_input);
+  CheckI8RankedTensorType(cvt_i4_i8);
+  CheckI8RankedTensorType(i8_input);
+  CheckI32RankedTensorType(dot_general);
+  CheckF32RankedTensorType(cvt_i32_f32);
+
+  replace cvt_i32_f32 with op<xnnpack.fully_connected_nc_qd8_f32_qc4w>(i8_input, i4_input);
+}

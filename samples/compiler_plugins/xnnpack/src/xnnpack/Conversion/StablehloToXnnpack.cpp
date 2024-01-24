@@ -28,6 +28,39 @@ static llvm::cl::opt<std::string> patternFileName(
     "xnnpack-pattern-file", llvm::cl::desc("file for pattern bytecode"),
     llvm::cl::init(""));
 
+/// Custom constraint invoked from PDL.
+static LogicalResult checkI4RankedTensorType(PatternRewriter &rewriter,
+                                             Value value) {
+  if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
+    return success(ty.getElementType().isInteger(4));
+  }
+  return failure();
+}
+
+static LogicalResult checkI8RankedTensorType(PatternRewriter &rewriter,
+                                             Value value) {
+  if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
+    return success(ty.getElementType().isInteger(8));
+  }
+  return failure();
+}
+
+static LogicalResult checkI32RankedTensorType(PatternRewriter &rewriter,
+                                              Value value) {
+  if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
+    return success(ty.getElementType().isInteger(32));
+  }
+  return failure();
+}
+
+static LogicalResult checkF32RankedTensorType(PatternRewriter &rewriter,
+                                              Value value) {
+  if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
+    return success(ty.getElementType().isF32());
+  }
+  return failure();
+}
+
 LogicalResult parsePatternFromFile(MLIRContext *context,
                                    llvm::StringRef patternFileName,
                                    OwningOpRef<ModuleOp> &patternModule) {
@@ -234,6 +267,14 @@ class ConvertStablehloToXnnpackPass
       PDLPatternModule pdlPattern(patternModule.release());
       patterns.add(std::move(pdlPattern));
 
+      patterns.getPDLPatterns().registerConstraintFunction(
+          "CheckI4RankedTensorType", checkI4RankedTensorType);
+      patterns.getPDLPatterns().registerConstraintFunction(
+          "CheckI8RankedTensorType", checkI8RankedTensorType);
+      patterns.getPDLPatterns().registerConstraintFunction(
+          "CheckI32RankedTensorType", checkI32RankedTensorType);
+      patterns.getPDLPatterns().registerConstraintFunction(
+          "CheckF32RankedTensorType", checkF32RankedTensorType);
     }
 
     patterns.add<ConvertFullyConnectedLayer>(context);
