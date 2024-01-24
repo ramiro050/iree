@@ -11,7 +11,8 @@
 // RUN:     --function="main" \
 // RUN:     --module=- \
 // RUN:     --input=8xf32=2 \
-// RUN:     --input=8xf32=4 | \
+// RUN:     --input=8xf32=4 \
+// RUN:     --xnnpack_thread_count=1 |\
 // RUN: FileCheck %s --check-prefix=CHECK-SYSTEM
 
 // CHECK-SYSTEM: EXEC @main
@@ -34,8 +35,7 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
   %dim_1 = tensor.dim %arg1, %c0_0 : tensor<?xf32>
   %0 = tensor.empty(%dim) : tensor<?xf32>
   %1 = flow.dispatch.region -> (tensor<?xf32>{%dim}) {
-    %threads = arith.constant 1 : index
-    %2 = iree_codegen.ukernel.generic "xnnpack.multiply2_workgroup" ins(%arg0, %arg1 : tensor<?xf32>, tensor<?xf32>) outs(%0 : tensor<?xf32>) (%dim, %dim_1, %dim, %threads : index, index, index, index) -> tensor<?xf32>
+    %2 = iree_codegen.ukernel.generic "xnnpack.multiply2_workgroup" ins(%arg0, %arg1 : tensor<?xf32>, tensor<?xf32>) outs(%0 : tensor<?xf32>) (%dim, %dim_1, %dim : index, index, index) -> tensor<?xf32>
     flow.return %2 : tensor<?xf32>
   } count() -> (index, index, index) {
     %c1 = arith.constant 1 : index

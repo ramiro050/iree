@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack %s --xnnpack-threads=2 | \
+// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack %s | \
 // RUN: iree-run-module \
 // RUN:     --device=local-sync \
 // RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/xnnpack/plugin/system_plugin$IREE_DYLIB_EXT \
@@ -6,7 +6,7 @@
 // RUN:     --function=main \
 // RUN:     --input=1x2x8xi8=1 \
 // RUN:     --input=4x8xi8=2 \
-// RUN:     --input=4x8xi8=8 | \
+// RUN:     --input=4x8xi8=8 --xnnpack_thread_count=2 | \
 // RUN: FileCheck %s --check-prefix=CHECK-SYSTEM
 
 // CHECK-SYSTEM: EXEC @main

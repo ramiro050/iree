@@ -109,15 +109,15 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
 }
 
 static FailureOr<func::FuncOp> createUKernelGeneric(
-    RewriterBase &moduleRewriter, Operation *op, size_t threads) {
+    RewriterBase &moduleRewriter, Operation *op) {
   auto funcType = FunctionType::get(op->getContext(), op->getOperandTypes(),
                                     op->getResultTypes());
   llvm::StringRef opName = op->getName().getStringRef();
   auto func = createFuncOp(
       moduleRewriter, op->getLoc(), funcType, opName,
-      [opName, op, threads](RewriterBase &rewriter, Location loc,
-                            ArrayRef<BlockArgument> operands,
-                            ArrayRef<Type> resultTypes) -> LogicalResult {
+      [opName, op](RewriterBase &rewriter, Location loc,
+                   ArrayRef<BlockArgument> operands,
+                   ArrayRef<Type> resultTypes) -> LogicalResult {
         if (llvm::any_of(operands, [](BlockArgument operand) {
               return !operand.getType().dyn_cast<RankedTensorType>();
             })) {
@@ -152,10 +152,6 @@ static FailureOr<func::FuncOp> createUKernelGeneric(
           SmallVector<Value> otherOperands;
           for (auto dims : maybeDims.value()) otherOperands.append(dims);
 
-          Value threadsVal =
-              rewriter.create<arith::ConstantIndexOp>(loc, threads);
-          otherOperands.push_back(threadsVal);
-
           auto ukernel =
               rewriter
                   .create<IREE::Codegen::UKernelGenericOp>(
@@ -187,9 +183,6 @@ class LegalizeXnnpackPass
  public:
   LegalizeXnnpackPass() = default;
   LegalizeXnnpackPass(const LegalizeXnnpackPass &) {}
-  LegalizeXnnpackPass(const LegalizeXnnpackOptions &options) {
-    xnnpackThreads.setValue(options.xnnpackThreads);
-  }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, IREE::Flow::FlowDialect,
                     IREE::Codegen::IREECodegenDialect>();
@@ -203,7 +196,7 @@ class LegalizeXnnpackPass
         return WalkResult::advance();
 
       FailureOr<func::FuncOp> ukernelGeneric =
-          createUKernelGeneric(rewriter, op, xnnpackThreads.getValue());
+          createUKernelGeneric(rewriter, op);
       if (failed(ukernelGeneric)) return WalkResult::interrupt();
       ukernelGeneric->setPrivate();
 

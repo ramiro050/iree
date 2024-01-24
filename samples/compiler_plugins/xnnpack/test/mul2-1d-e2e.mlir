@@ -5,7 +5,8 @@
 // RUN:     --module=- \
 // RUN:     --function=main \
 // RUN:     --input=8xf32=2 \
-// RUN:     --input=8xf32=4 | \
+// RUN:     --input=8xf32=4 \
+// RUN:     --xnnpack_thread_count=1 |\
 // RUN: FileCheck %s --check-prefix=CHECK-SYSTEM
 
 // CHECK-SYSTEM: EXEC @main

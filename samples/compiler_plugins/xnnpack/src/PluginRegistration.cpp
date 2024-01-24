@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree/compiler/PluginAPI/Client.h"
-#include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xnnpack/Conversion/Passes.h"
@@ -18,15 +17,7 @@ using namespace mlir::iree_compiler;
 namespace {
 
 struct XnnpackOptions {
-  size_t xnnpackThreads = 1;
-
-  void bindOptions(OptionsBinder &binder) {
-    static llvm::cl::OptionCategory category("XNNPACK Plugin");
-    binder.opt<size_t>(
-        "xnnpack-threads", xnnpackThreads,
-        llvm::cl::desc("Number of threads in XNNPACK threadpool."),
-        llvm::cl::cat(category));
-  }
+  void bindOptions(OptionsBinder &binder) {}
 };
 
 struct XnnpackSession : public PluginSession<XnnpackSession, XnnpackOptions> {
@@ -42,11 +33,8 @@ struct XnnpackSession : public PluginSession<XnnpackSession, XnnpackOptions> {
   LogicalResult onActivate() override { return success(); }
 
   void extendPreprocessingPassPipeline(OpPassManager &pm) override {
-    IREE::Xnnpack::LegalizeXnnpackOptions legalizeXnnpackOptions;
-    legalizeXnnpackOptions.xnnpackThreads = options.xnnpackThreads;
-
     pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpack());
-    pm.addPass(IREE::Xnnpack::createLegalizeXnnpack(legalizeXnnpackOptions));
+    pm.addPass(IREE::Xnnpack::createLegalizeXnnpack());
   }
 };
 
