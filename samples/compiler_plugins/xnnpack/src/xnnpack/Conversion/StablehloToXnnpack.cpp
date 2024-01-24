@@ -11,8 +11,10 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xnnpack/Conversion/Passes.h"
 #include "xnnpack/IR/XnnpackDialect.h"
@@ -82,22 +84,28 @@ namespace {
 //
 // TODO: Add support for `bias`
 class ConvertFullyConnectedLayer
-    : public OpConversionPattern<mlir::stablehlo::DotGeneralOp> {
+    : public OpRewritePattern<mlir::stablehlo::ConvertOp> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  using OpRewritePattern<mlir::stablehlo::ConvertOp>::OpRewritePattern;
+
   static bool isFullyConnectedLayer(mlir::stablehlo::DotGeneralOp op) {
     auto error = [](std::string _) { return failure(); };
     return succeeded(
         ConvertFullyConnectedLayer::getFullyConnectedInfo(op, error));
   }
 
-  LogicalResult matchAndRewrite(
-      mlir::stablehlo::DotGeneralOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(mlir::stablehlo::ConvertOp op,
+                                PatternRewriter &rewriter) const override {
     auto error = [op, &rewriter](std::string msg) {
       return rewriter.notifyMatchFailure(op, msg);
     };
-    FailureOr<FullyConnectedInfo> maybeInfo = getFullyConnectedInfo(op, error);
+    auto dotGeneralOp =
+        dyn_cast<stablehlo::DotGeneralOp>(op.getOperand().getDefiningOp());
+    if (!dotGeneralOp) {
+      return error("expected stablehlo.dot_general as input");
+    }
+    FailureOr<FullyConnectedInfo> maybeInfo =
+        getFullyConnectedInfo(dotGeneralOp, error);
     if (failed(maybeInfo)) {
       return error("unable to get fully connected info");
     }
@@ -123,12 +131,8 @@ class ConvertFullyConnectedLayer
           op.getLoc(), info.kernel, permAttr);
     }
 
-    Operation *outputDefiningOp = info.output.getDefiningOp();
-    // If the matched `stablehlo.dot_general` op is not being replaced, it must
-    // be removed to avoid having the pattern applied again to it.
-    if (outputDefiningOp != op) rewriter.eraseOp(op);
     rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        outputDefiningOp, outputType, info.input, info.kernel);
+        op, outputType, info.input, info.kernel);
     return success();
   }
 
@@ -219,9 +223,6 @@ class ConvertStablehloToXnnpackPass
   }
   void runOnOperation() override {
     MLIRContext *context = &getContext();
-    ConversionTarget target(*context);
-    target.addLegalDialect<IREE::Xnnpack::XnnpackDialect,
-                           mlir::stablehlo::StablehloDialect>();
     RewritePatternSet patterns(context);
 
     // Load patterns from a file if specified.
@@ -232,18 +233,12 @@ class ConvertStablehloToXnnpackPass
     if (patternModule) {
       PDLPatternModule pdlPattern(patternModule.release());
       patterns.add(std::move(pdlPattern));
+
     }
 
     patterns.add<ConvertFullyConnectedLayer>(context);
 
-    target.addIllegalOp<mlir::stablehlo::MulOp>();  // PDL Pattern
-    target.addDynamicallyLegalOp<mlir::stablehlo::DotGeneralOp>(
-        std::not_fn(ConvertFullyConnectedLayer::isFullyConnectedLayer));
-
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
-      return signalPassFailure();
-    }
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
