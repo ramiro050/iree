@@ -148,12 +148,6 @@ class ConvertFullyConnectedLayer
  public:
   using OpRewritePattern<mlir::stablehlo::ConvertOp>::OpRewritePattern;
 
-  static bool isFullyConnectedLayer(mlir::stablehlo::DotGeneralOp op) {
-    auto error = [](std::string _) { return failure(); };
-    return succeeded(
-        ConvertFullyConnectedLayer::getFullyConnectedInfo(op, error));
-  }
-
   LogicalResult matchAndRewrite(mlir::stablehlo::ConvertOp op,
                                 PatternRewriter &rewriter) const override {
     auto error = [op, &rewriter](std::string msg) {
