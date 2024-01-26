@@ -7,6 +7,7 @@ Constraint CheckI4RankedTensorType(value: Value);
 Constraint CheckI8RankedTensorType(value: Value);
 Constraint CheckI32RankedTensorType(value: Value);
 Constraint CheckF32RankedTensorType(value: Value);
+Constraint CheckInnermostReduction(value: Value);
 
 Pattern {
   let i8_input : Value;  // lhs
@@ -19,6 +20,7 @@ Pattern {
   CheckI8RankedTensorType(cvt_i4_i8);
   CheckI8RankedTensorType(i8_input);
   CheckI32RankedTensorType(dot_general);
+  CheckInnermostReduction(dot_general);
   CheckF32RankedTensorType(cvt_i32_f32);
 
   replace cvt_i32_f32 with op<xnnpack.fully_connected_nc_qd8_f32_qc4w>(i8_input, i4_input);
