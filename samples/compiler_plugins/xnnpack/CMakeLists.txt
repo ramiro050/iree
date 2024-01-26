@@ -108,6 +108,7 @@ iree_cc_library(
     MLIRIR
     MLIRPDLInterpDialect
     MLIRParser
+    MLIRPass
     MLIRSupport
     MLIRTransforms
     StablehloOps
