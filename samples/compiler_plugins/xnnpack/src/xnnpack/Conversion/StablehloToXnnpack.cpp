@@ -34,7 +34,8 @@ static LogicalResult checkI4RankedTensorType(PatternRewriter &rewriter,
   if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
     return success(ty.getElementType().isInteger(4));
   }
-  return failure();
+  return rewriter.notifyMatchFailure(value.getLoc(),
+                                     "expected RankedTensorType");
 }
 
 static LogicalResult checkI8RankedTensorType(PatternRewriter &rewriter,
@@ -42,7 +43,8 @@ static LogicalResult checkI8RankedTensorType(PatternRewriter &rewriter,
   if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
     return success(ty.getElementType().isInteger(8));
   }
-  return failure();
+  return rewriter.notifyMatchFailure(value.getLoc(),
+                                     "expected RankedTensorType");
 }
 
 static LogicalResult checkI32RankedTensorType(PatternRewriter &rewriter,
@@ -50,7 +52,8 @@ static LogicalResult checkI32RankedTensorType(PatternRewriter &rewriter,
   if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
     return success(ty.getElementType().isInteger(32));
   }
-  return failure();
+  return rewriter.notifyMatchFailure(value.getLoc(),
+                                     "expected RankedTensorType");
 }
 
 static LogicalResult checkF32RankedTensorType(PatternRewriter &rewriter,
@@ -58,19 +61,24 @@ static LogicalResult checkF32RankedTensorType(PatternRewriter &rewriter,
   if (auto ty = dyn_cast<RankedTensorType>(value.getType())) {
     return success(ty.getElementType().isF32());
   }
-  return failure();
+  return rewriter.notifyMatchFailure(value.getLoc(),
+                                     "expected RankedTensorType");
 }
 
 static LogicalResult checkInnermostReduction(PatternRewriter &rewriter,
                                              Value value) {
   auto op = value.getDefiningOp<stablehlo::DotGeneralOp>();
+  if (!op) {
+    return rewriter.notifyMatchFailure(value.getLoc(),
+                                       "expected stablehlo.dot_general");
+  }
   auto dotNumbers = op.getDotDimensionNumbers();
   ArrayRef<int64_t> lhsContractingDims =
       dotNumbers.getLhsContractingDimensions();
   ArrayRef<int64_t> rhsContractingDims =
       dotNumbers.getRhsContractingDimensions();
   if (lhsContractingDims.size() != 1 || rhsContractingDims.size() != 1) {
-    return failure();
+    return rewriter.notifyMatchFailure(op, "reduction dims are not innermost");
   }
   int64_t lhsRank = op.getLhs().getType().cast<RankedTensorType>().getRank();
   int64_t rhsRank = op.getRhs().getType().cast<RankedTensorType>().getRank();
