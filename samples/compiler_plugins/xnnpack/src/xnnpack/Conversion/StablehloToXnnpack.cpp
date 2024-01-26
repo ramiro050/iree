@@ -61,6 +61,25 @@ static LogicalResult checkF32RankedTensorType(PatternRewriter &rewriter,
   return failure();
 }
 
+static LogicalResult checkInnermostReduction(PatternRewriter &rewriter,
+                                             Value value) {
+  auto op = value.getDefiningOp<stablehlo::DotGeneralOp>();
+  auto dotNumbers = op.getDotDimensionNumbers();
+  ArrayRef<int64_t> lhsContractingDims =
+      dotNumbers.getLhsContractingDimensions();
+  ArrayRef<int64_t> rhsContractingDims =
+      dotNumbers.getRhsContractingDimensions();
+  if (lhsContractingDims.size() != 1 || rhsContractingDims.size() != 1) {
+    return failure();
+  }
+  int64_t lhsRank = op.getLhs().getType().cast<RankedTensorType>().getRank();
+  int64_t rhsRank = op.getRhs().getType().cast<RankedTensorType>().getRank();
+  int64_t lhsContractingDim = lhsContractingDims.front();
+  int64_t rhsContractingDim = rhsContractingDims.front();
+  return success((lhsContractingDim == lhsRank - 1) &&
+                 (rhsContractingDim == rhsRank - 1));
+}
+
 LogicalResult parsePatternFromFile(MLIRContext *context,
                                    llvm::StringRef patternFileName,
                                    OwningOpRef<ModuleOp> &patternModule) {
@@ -275,6 +294,8 @@ class ConvertStablehloToXnnpackPass
           "CheckI32RankedTensorType", checkI32RankedTensorType);
       patterns.getPDLPatterns().registerConstraintFunction(
           "CheckF32RankedTensorType", checkF32RankedTensorType);
+      patterns.getPDLPatterns().registerConstraintFunction(
+          "CheckInnermostReduction", checkInnermostReduction);
     }
 
     patterns.add<ConvertFullyConnectedLayer>(context);
