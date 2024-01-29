@@ -32,8 +32,12 @@ struct XnnpackSession : public PluginSession<XnnpackSession, XnnpackOptions> {
 
   LogicalResult onActivate() override { return success(); }
 
-  void extendPreprocessingPassPipeline(OpPassManager &pm) override {
+  void extendInputConversionPreprocessingPassPipeline(
+      OpPassManager &pm, InputDialectOptions::Type inputType) override {
     pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpack());
+  }
+
+  void extendPreprocessingPassPipeline(OpPassManager &pm) override {
     pm.addPass(IREE::Xnnpack::createLegalizeXnnpack());
   }
 };
