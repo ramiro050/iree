@@ -7,6 +7,7 @@
 #ifndef IREE_DIALECTS_DIALECT_VECTOREXT_IR_VECTOREXTOPS_H_
 #define IREE_DIALECTS_DIALECT_VECTOREXT_IR_VECTOREXTOPS_H_
 
+#include "iree-dialects/Dialect/VectorExt/IR/VectorExtDialect.h"
 #include "iree-dialects/Dialect/VectorExt/IR/VectorExtInterfaces.h"
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
@@ -16,18 +17,6 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-
-// clang-format off
-
-#include "iree-dialects/Dialect/VectorExt/IR/VectorExtEnums.h.inc" // IWYU pragma: export
-
-#define GET_ATTRDEF_CLASSES
-#include "iree-dialects/Dialect/VectorExt/IR/VectorExtAttrs.h.inc" // IWYU pragma: export
-
-#define GET_OP_CLASSES
-#include "iree-dialects/Dialect/VectorExt/IR/VectorExtOps.h.inc" // IWYU pragma: export
-
-// clang-format on
 
 namespace mlir::iree_compiler::IREE::VectorExt {
 
@@ -42,9 +31,18 @@ public:
     position += stride;
     return *this;
   }
-  bool operator!=(const DimensionalIterator &other) const {
-    return position != other.position;
+
+  bool operator==(const DimensionalIterator &other) const {
+    return position == other.position;
   }
+  bool operator!=(const DimensionalIterator &other) const {
+    return !(*this == other);
+  }
+  bool operator<(const DimensionalIterator &other) const {
+    return position < other.position;
+  }
+
+  int64_t getPosition() const { return position; }
 
 private:
   int64_t position, stride;
@@ -61,7 +59,6 @@ public:
   DimensionalIterator begin() const { return DimensionalIterator(start, step); }
   DimensionalIterator end() const { return DimensionalIterator(stop, step); }
 
-private:
   int64_t start, stop, step;
 };
 
@@ -72,26 +69,69 @@ private:
 // required during distribution.
 class LayoutIterator {
 public:
-  using State = llvm::MapVector<LayoutDimension, DimensionalIterator>;
-  using DimensionMapping =
-      llvm::DenseMap<int64_t, SmallVector<LayoutDimension>>;
-  void maybeFreezeAndConcatenate(const LayoutIterator &frozenIterator);
+  struct State {
+    SmallVector<int64_t> computeSIMTIndex() const;
+    SmallVector<int64_t> computeIteratorProjectedSIMTIndex() const;
+    bool contains(LayoutDimension dim) const { return iterators.contains(dim); }
+    void erase(LayoutDimension dim) { iterators.erase(dim); }
+    DimensionalIterator lookup(LayoutDimension dim) const {
+      return iterators.lookup(dim);
+    }
+    DimensionalIterator &operator[](LayoutDimension dim) {
+      return iterators[dim];
+    }
+    void print() const {
+      for (const auto &[dim, it] : iterators) {
+        llvm::outs() << stringifyLayoutDimension(dim).str() + ":" +
+                            std::to_string(*it) + ", ";
+      }
+      llvm::outs() << "\n";
+    }
+    llvm::MapVector<LayoutDimension, DimensionalIterator> iterators;
+    DenseMap<int64_t, DenseSet<LayoutDimension>> simdToLayoutDim;
+    llvm::MapVector<LayoutDimension, DimensionalRange> ranges;
+    SmallVector<LayoutDimension> labels{
+        LayoutDimension::BATCHX, LayoutDimension::BATCHY,
+        LayoutDimension::VECTORY, LayoutDimension::VECTORX};
+  };
+  void maybeFreezeAndConcatenate(const LayoutIterator::State &frozenState);
+  LayoutIterator(LayoutAttr &attr);
+  LayoutIterator(LayoutAttr &attr, int64_t simtIndex);
   LayoutIterator(LayoutAttr &attr, DenseMap<LayoutDimension, int64_t> strides);
+  LayoutIterator(LayoutAttr &attr, DenseMap<LayoutDimension, int64_t> strides,
+                 int64_t simtIndex);
   LayoutIterator(PerDimLayoutAttr &attr,
                  DenseMap<LayoutDimension, int64_t> strides);
   void apply(std::function<void(const LayoutIterator::State &)>);
   LayoutIterator &operator++();
   State getState() const { return state; }
+  void erase(LayoutDimension dim);
+  LayoutIterator getBatchIterator() const;
 
 private:
-  void initialize(PerDimLayoutAttr &attr,
-                  DenseMap<LayoutDimension, int64_t> strides);
+  void initialize(const PerDimLayoutAttr &attr,
+                  DenseMap<LayoutDimension, int64_t> strides,
+                  std::optional<int64_t> simdIndex);
   bool iterationComplete();
   State state;
-  llvm::MapVector<LayoutDimension, DimensionalRange> ranges;
-  DimensionMapping simdDimensionToLayoutDimension;
   DenseSet<LayoutDimension> frozenDimensions;
+  int64_t iterations{0};
+  int64_t maxIterations{1};
 };
+
+inline bool isBatchDimension(LayoutDimension dim) {
+  return (dim == LayoutDimension::BATCHX) || (dim == LayoutDimension::BATCHY);
+}
+
+inline bool isLaneDimension(LayoutDimension dim) {
+  return (dim == LayoutDimension::LANEX) || (dim == LayoutDimension::LANEY) ||
+         (dim == LayoutDimension::LANEZ);
+}
+
+inline bool isVectorDimension(LayoutDimension dim) {
+  return (dim == LayoutDimension::VECTORX) ||
+         (dim == LayoutDimension::VECTORY) || (dim == LayoutDimension::VECTORZ);
+}
 
 } // namespace mlir::iree_compiler::IREE::VectorExt
 

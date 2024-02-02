@@ -64,8 +64,9 @@ void TensorDimTrackingRewriter::notifyOperationRemoved(Operation *op) {
     dimOps.erase(op);
 }
 
-void TensorDimTrackingRewriter::notifyOperationInserted(Operation *op) {
-  IRRewriter::Listener::notifyOperationInserted(op);
+void TensorDimTrackingRewriter::notifyOperationInserted(Operation *op,
+                                                        InsertPoint previous) {
+  IRRewriter::Listener::notifyOperationInserted(op, previous);
   if (isa<tensor::DimOp>(op))
     dimOps.insert(op);
 }
@@ -237,22 +238,6 @@ static bool isRootOp(Operation *op) {
 // TODO(ravishankarm): This seems like a use case for an interface.
 static bool isPackLikeOp(Operation *op) {
   return isa<IREE::LinalgExt::SetEncodingOp, tensor::PackOp>(op);
-}
-
-/// Returns the source of the pack-like operation.
-// TODO(ravishankarm): This seems like a use case for an interface.
-static Value getSourceOfPackLikeOp(Operation *op) {
-  return TypeSwitch<Operation *, Value>(op)
-      .Case<tensor::PackOp>([](auto packOp) { return packOp.getSource(); })
-      .Case<IREE::LinalgExt::SetEncodingOp>(
-          [](auto setEncodingOp) { return setEncodingOp.getSource(); })
-      .Default([](Operation *) { return nullptr; });
-}
-static RankedTensorType getSourceTypeOfPackLikeOp(Operation *op) {
-  Value source = getSourceOfPackLikeOp(op);
-  if (!source)
-    return nullptr;
-  return llvm::cast<RankedTensorType>(source.getType());
 }
 
 /// Returns true if the operation is an `unpack` op or an `unset_encoding` op,
@@ -575,6 +560,12 @@ isFusableWithConsumer(OpOperand &fusedOperand,
     return false;
   }
 
+  // TODO(#16025): Enable mmt4d fusion. It is disabled because the backends
+  // can not set multi lowering_config properly. See the issue for more details.
+  if (isa<linalg::Mmt4DOp>(producer)) {
+    return false;
+  }
+
   auto producerLinalgOp = dyn_cast<linalg::LinalgOp>(producer);
   auto consumerLinalgOp = dyn_cast<linalg::LinalgOp>(consumer);
   if (!producerLinalgOp || !consumerLinalgOp)
@@ -834,7 +825,7 @@ decideFusableLinalgOps(Region &region, DominanceInfo const &dominanceInfo,
 /// Create Flow::DispatchGroupsOps based on a fusion heuristic.
 static LogicalResult
 createFusionGroups(TensorDimTrackingRewriter &rewriter,
-                   FunctionOpInterface funcOp,
+                   mlir::FunctionOpInterface funcOp,
                    DominanceInfo const &dominanceInfo,
                    FormDispatchRegionsOptions const &options) {
   // Step 1: Decide fusion groups (heuristic). This marks rootOps with an

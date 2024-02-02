@@ -42,6 +42,7 @@ iree_check_single_backend_test_suite(
     "finite.mlir"
     "floor.mlir"
     "gather.mlir"
+    "householder.mlir"
     "iota.mlir"
     "log.mlir"
     "log_plus_one.mlir"
@@ -112,6 +113,7 @@ iree_check_single_backend_test_suite(
     "finite.mlir"
     "floor.mlir"
     "gather.mlir"
+    "householder.mlir"
     "iota.mlir"
     "log.mlir"
     "log_plus_one.mlir"
@@ -182,6 +184,7 @@ iree_check_single_backend_test_suite(
     "finite.mlir"
     "floor.mlir"
     "gather.mlir"
+    "householder.mlir"
     "iota.mlir"
     "log.mlir"
     "log_plus_one.mlir"
@@ -253,6 +256,7 @@ iree_check_single_backend_test_suite(
     "finite.mlir"
     "floor.mlir"
     "gather.mlir"
+    "householder.mlir"
     "iota.mlir"
     "log.mlir"
     "log_plus_one.mlir"
@@ -330,6 +334,7 @@ iree_check_single_backend_test_suite(
     "finite.mlir"
     "floor.mlir"
     "gather.mlir"
+    "householder.mlir"
     "iota.mlir"
     "log.mlir"
     "log_plus_one.mlir"
@@ -368,6 +373,7 @@ iree_check_single_backend_test_suite(
     "cuda"
   COMPILER_FLAGS
     "--iree-stream-emulate-memset"
+    "--iree-hal-cuda-enable-legacy-sync=false"
   INPUT_TYPE
     "stablehlo"
   RUNNER_ARGS
@@ -382,7 +388,7 @@ iree_check_single_backend_test_suite(
 
 iree_check_single_backend_test_suite(
   NAME
-    check_cuda_streams
+    check_cuda_stream
   SRCS
     "abs.mlir"
     "add.mlir"
@@ -412,6 +418,7 @@ iree_check_single_backend_test_suite(
     "finite.mlir"
     "floor.mlir"
     "gather.mlir"
+    "householder.mlir"
     "iota.mlir"
     "log.mlir"
     "log_plus_one.mlir"
@@ -448,6 +455,8 @@ iree_check_single_backend_test_suite(
     "cuda"
   DRIVER
     "cuda"
+  COMPILER_FLAGS
+    "--iree-hal-cuda-enable-legacy-sync=false"
   INPUT_TYPE
     "stablehlo"
   RUNNER_ARGS

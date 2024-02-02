@@ -9,9 +9,9 @@
 
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "iree-dialects/Dialect/LinalgExt/Utils/Utils.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -84,9 +84,8 @@ private:
   bool matchByDefault;
 };
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingInterfaceTilingPass();
-
-std::unique_ptr<OperationPass<func::FuncOp>> createLinalgExtToLoopsPass();
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
+createLinalgExtToLoopsPass();
 
 std::unique_ptr<OperationPass<>> createPadContractionToBlockSizePass();
 
@@ -105,11 +104,12 @@ void populateTopkSplitReductionPattern(
     const LinalgExt::LinalgTransformationFilter &f =
         LinalgExt::LinalgTransformationFilter());
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTopkSplitReductionPass();
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
+createTopkSplitReductionPass();
 
 /// Tile and decompose the winograd transform ops into a sequence
 /// of linalg ops.
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
 createTileAndDecomposeWinogradTransformPass();
 
 // Creates a pass to convert linalg convolution ops into a sequence of
@@ -118,17 +118,21 @@ createTileAndDecomposeWinogradTransformPass();
 std::unique_ptr<Pass> createConvertConv2DToWinogradPass();
 
 // Transform dialect version of tile and decompose attention wrapper.
+// The optional tile size specifies the step for the innermost for loop.
 void tileAndDecomposeAttention(IREE::LinalgExt::AttentionOp attnOp,
                                SmallVectorImpl<Operation *> &ops,
-                               RewriterBase &rewriter, bool onlyTile = false);
+                               RewriterBase &rewriter, bool onlyTile = false,
+                               std::optional<uint64_t> tileSize = std::nullopt);
 
-IREE::LinalgExt::AttentionOp tileAttention(IREE::LinalgExt::AttentionOp attnOp,
-                                           SmallVectorImpl<Operation *> &ops,
-                                           RewriterBase &rewriter);
+IREE::LinalgExt::AttentionOp
+tileAttention(IREE::LinalgExt::AttentionOp attnOp,
+              SmallVectorImpl<Operation *> &ops, RewriterBase &rewriter,
+              std::optional<uint64_t> tileSize = std::nullopt);
 
 void decomposeTiledAttention(IREE::LinalgExt::AttentionOp tiledAttnOp,
                              SmallVectorImpl<Operation *> &ops,
-                             RewriterBase &rewriter);
+                             RewriterBase &rewriter,
+                             std::optional<uint64_t> tileSize = std::nullopt);
 
 // Creates a pass to convert the attention op into a sequence of
 // linalg ops.

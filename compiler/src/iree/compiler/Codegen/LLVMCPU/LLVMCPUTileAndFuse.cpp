@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/UKernelOps.h"
 #include "iree/compiler/Codegen/LLVMCPU/PassDetail.h"
 #include "iree/compiler/Codegen/LLVMCPU/Passes.h"
 #include "iree/compiler/Codegen/LLVMCPU/Utils.h"
@@ -98,8 +99,10 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
                                scf::SCFTilingOptions options) {
   llvm::SmallDenseSet<Operation *> origTiledAndFusedOps;
   collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
-  auto isIgnoredUser = [&](Operation *user, scf::ForOp outerMostTiledLoop) {
-    return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
+  auto isIgnoredUser = [&](Operation *user,
+                           LoopLikeOpInterface outerMostTiledLoop) {
+    return origTiledAndFusedOps.count(user) ||
+           isa<tensor::DimOp, IREE::Codegen::UKernelGenericOp>(user);
   };
 
   // The rest of this method is similar to
@@ -111,12 +114,10 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   SmallVector<OpResult> yieldedValuesToOrigValues;
   SmallVector<Operation *> tiledOps;
   FailureOr<scf::SCFTilingResult> tilingResult =
-      scf::tileUsingSCFForOp(rewriter, cast<TilingInterface>(rootOp), options);
+      scf::tileUsingSCF(rewriter, cast<TilingInterface>(rootOp), options);
   if (failed(tilingResult)) {
     return failure();
   }
-  auto forLoops = llvm::to_vector(llvm::map_range(
-      tilingResult->loops, [](Operation *op) { return cast<scf::ForOp>(op); }));
   yieldedValuesToOrigValues.append(rootOp->result_begin(),
                                    rootOp->result_end());
   // A map from untiled value to scf.for iter_arg. The iter_arg is used for DPS
@@ -135,7 +136,8 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   } else if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(rootOp)) {
     for (auto [init, iterArg] : llvm::zip_equal(
              dpsOp.getDpsInits(),
-             cast<scf::ForOp>(forLoops.back()).getRegionIterArgs())) {
+             cast<scf::ForOp>(tilingResult->loops.back().getOperation())
+                 .getRegionIterArgs())) {
       mapToIterArg[init] = iterArg;
     }
   }
@@ -160,10 +162,10 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
 
           if (dpsOp.isDpsInit(&operand) &&
               mapToIterArg.contains(sliceOp.getSource())) {
-            rewriter.startRootUpdate(sliceOp);
+            rewriter.startOpModification(sliceOp);
             sliceOp.getSourceMutable().assign(
                 mapToIterArg[sliceOp.getSource()]);
-            rewriter.finalizeRootUpdate(sliceOp);
+            rewriter.finalizeOpModification(sliceOp);
           }
         }
       };
@@ -178,7 +180,8 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
 
     // Materialize the slice of the producer in place.
     std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-        tileAndFuseProducerOfSlice(rewriter, candidateSliceOp, forLoops);
+        scf::tileAndFuseProducerOfSlice(rewriter, candidateSliceOp,
+                                        tilingResult->loops);
     if (!fusedProducer)
       continue;
 
@@ -186,12 +189,15 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
     // to be yielded from within the tiled loop.
     OpResult untiledProducer = fusedProducer->origProducer;
     if (llvm::any_of(untiledProducer.getUsers(), [&](Operation *user) {
-          return !isIgnoredUser(user, forLoops.front()) &&
-                 !forLoops.front()->isAncestor(user);
+          return !isIgnoredUser(user, tilingResult->loops.front()) &&
+                 !tilingResult->loops.front()->isAncestor(user);
           ;
         })) {
-      yieldReplacementForFusedProducer(rewriter, candidateSliceOp,
-                                       fusedProducer.value(), forLoops);
+      if (failed(scf::yieldReplacementForFusedProducer(
+              rewriter, candidateSliceOp, fusedProducer.value(),
+              tilingResult->loops))) {
+        return failure();
+      }
       yieldedValuesToOrigValues.push_back(untiledProducer);
     }
 
@@ -202,7 +208,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
     }
   }
 
-  scf::ForOp outermostLoop = forLoops.front();
+  auto outermostLoop = cast<scf::ForOp>(tilingResult->loops.front());
   for (auto [index, origVal] : llvm::enumerate(yieldedValuesToOrigValues)) {
     Value replacement = outermostLoop.getResult(index);
     rewriter.replaceUsesWithIf(origVal, replacement, [&](OpOperand &use) {
@@ -286,7 +292,7 @@ void LLVMCPUTileAndFusePass::runOnOperation() {
 }
 } // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
 createLLVMCPUTileAndFusePass(int64_t tilingLevel) {
   return std::make_unique<LLVMCPUTileAndFusePass>(tilingLevel);
 }

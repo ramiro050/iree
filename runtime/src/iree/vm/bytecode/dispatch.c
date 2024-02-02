@@ -923,7 +923,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
       if (IREE_UNLIKELY(!buffer)) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "buffer is null");
       }
-      uint64_t* result = VM_DecResultRegI64("result");
+      uint64_t* result = (uint64_t*)VM_DecResultRegI64("result");
       *result = (uint64_t)iree_vm_buffer_length(buffer);
     });
 
@@ -1051,7 +1051,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
                                 "source_buffer is null");
       }
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("source_offset");
-      uint32_t* result = VM_DecResultRegI32("result");
+      int32_t* result = VM_DecResultRegI32("result");
       vm_buffer_load_i8u_inline(buffer, offset, result);
     });
     DISPATCH_OP(CORE, BufferLoadI8S, {
@@ -1064,7 +1064,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
                                 "source_buffer is null");
       }
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("source_offset");
-      uint32_t* result = VM_DecResultRegI32("result");
+      int32_t* result = VM_DecResultRegI32("result");
       vm_buffer_load_i8s_inline(buffer, offset, result);
     });
     DISPATCH_OP(CORE, BufferLoadI16U, {
@@ -1077,7 +1077,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
                                 "source_buffer is null");
       }
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("source_offset");
-      uint32_t* result = VM_DecResultRegI32("result");
+      int32_t* result = VM_DecResultRegI32("result");
       vm_buffer_load_i16u_inline(buffer, offset, result);
     });
     DISPATCH_OP(CORE, BufferLoadI16S, {
@@ -1090,7 +1090,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
                                 "source_buffer is null");
       }
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("source_offset");
-      uint32_t* result = VM_DecResultRegI32("result");
+      int32_t* result = VM_DecResultRegI32("result");
       vm_buffer_load_i16s_inline(buffer, offset, result);
     });
     DISPATCH_OP(CORE, BufferLoadI32, {
@@ -1103,7 +1103,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
                                 "source_buffer is null");
       }
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("source_offset");
-      uint32_t* result = VM_DecResultRegI32("result");
+      int32_t* result = VM_DecResultRegI32("result");
       vm_buffer_load_i32_inline(buffer, offset, result);
     });
     DISPATCH_OP(CORE, BufferLoadI64, {
@@ -1116,7 +1116,7 @@ static iree_status_t iree_vm_bytecode_dispatch(
                                 "source_buffer is null");
       }
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("source_offset");
-      uint64_t* result = VM_DecResultRegI64("result");
+      int64_t* result = VM_DecResultRegI64("result");
       vm_buffer_load_i64_inline(buffer, offset, result);
     });
 
@@ -1174,6 +1174,24 @@ static iree_status_t iree_vm_bytecode_dispatch(
       iree_host_size_t offset = VM_DecOperandRegI64HostSize("target_offset");
       uint64_t value = (uint64_t)VM_DecOperandRegI64("value");
       vm_buffer_store_i64_inline(buffer, offset, value);
+    });
+
+    DISPATCH_OP(CORE, BufferHash, {
+      bool source_buffer_is_move;
+      iree_vm_ref_t* source_buffer_ref =
+          VM_DecOperandRegRef("source_buffer", &source_buffer_is_move);
+      iree_vm_buffer_t* source_buffer =
+          iree_vm_buffer_deref(*source_buffer_ref);
+      if (IREE_UNLIKELY(!source_buffer)) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "source_buffer is null");
+      }
+      iree_host_size_t source_offset =
+          VM_DecOperandRegI64HostSize("source_offset");
+      iree_host_size_t length = VM_DecOperandRegI64HostSize("length");
+      int64_t* result = VM_DecResultRegI64("result");
+      IREE_RETURN_IF_ERROR(
+          iree_vm_buffer_hash(source_buffer, source_offset, length, result));
     });
 
     //===------------------------------------------------------------------===//

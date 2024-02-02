@@ -25,24 +25,37 @@ set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 # Write some important CMake options to a file for convenient use from scripts.
 configure_file(build_config_template.txt.in build_config.txt)
 
+# If cross-compiling and not building the compiler, then attempt to find
+# the compiler tools.
+# This is actual broken because the situation is tri-state:
+#   1. Cross-compiling with no built compiler: Should work the same as
+#      IREE_BUILD_COMPILER=OFF in a host build (i.e. nothing depending
+#      on the compiler should be built).
+#   2. Cross-compiling with a compiler built for the target: Anything
+#      on the host which needs the compiler, still must have host tools.
+#   3. Normal host build.
+# This simplistic setup makes #2 impossible and it overloads #1 to
+# also support building things that depend on the compiler. The targets
+# need to be aliased/forked for host variants to fully support. For now
+# we just make all of these as OPTIONAL and let things break if not set up
+# right.
+if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
+  iree_import_binary(NAME iree-tblgen OPTIONAL)
+  iree_import_binary(NAME iree-compile OPTIONAL)
+  iree_import_binary(NAME iree-opt OPTIONAL)
+  iree_import_binary(NAME iree-run-mlir OPTIONAL)
+  iree_import_binary(NAME FileCheck OPTIONAL)
+  iree_import_binary(NAME not OPTIONAL)
+  iree_import_binary(NAME clang OPTIONAL)
+  iree_import_binary(NAME llvm-link OPTIONAL)
+endif()
+
 # For sub-directories, we want targets fully qualified relative to the
 # root. But after, we want those in *this* directory to be unqualified
 # (i.e. 'iree-compile').
 set(IREE_PACKAGE_ROOT_PREFIX "iree/tools")
 iree_add_all_subdirs()
 set(IREE_PACKAGE_ROOT_PREFIX "")
-
-# TODO(scotttodd): Should this be checking IREE_BUILD_COMPILER?
-#   Maybe we should disallow setting both at the same time, since it's
-#   ambigious which should be used
-if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
-  iree_import_binary(NAME iree-tblgen)
-  iree_import_binary(NAME iree-compile)
-  iree_import_binary(NAME iree-opt)
-  iree_import_binary(NAME iree-run-mlir)
-  iree_import_binary(NAME clang)
-  iree_import_binary(NAME llvm-link)
-endif()
 
 # TODO(#6353): Tools has thread dependencies in gtest, benchmark, yaml, etc.
 # This should be split between runtime/compiler with optional threading support.
@@ -65,30 +78,7 @@ iree_cc_binary(
     iree::tooling::device_util
     iree::tooling::vm_util
     iree::vm
-  INSTALL_COMPONENT IREETools-Runtime    
-)
-
-iree_cc_binary(
-  NAME
-    iree-benchmark-trace
-  SRCS
-    "iree-benchmark-trace-main.c"
-  DEPS
-    iree::base
-    iree::base::internal::atomic_slist
-    iree::base::internal::file_io
-    iree::base::internal::flags
-    iree::base::internal::path
-    iree::hal
-    iree::modules::hal
-    iree::testing::benchmark
-    iree::tooling::device_util
-    iree::tooling::trace_replay
-    iree::tooling::vm_util
-    iree::tooling::yaml_util
-    iree::vm
-    yaml
-  INSTALL_COMPONENT IREETools-Runtime  
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 iree_cc_binary(
@@ -125,7 +115,7 @@ iree_cc_binary(
     iree::io::parameter_index
     iree::io::scope_map
     iree::tooling::parameter_util
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 iree_cc_binary(
@@ -137,7 +127,7 @@ iree_cc_binary(
     iree::base
     iree::base::internal::cpu
     iree::schemas::cpu_data
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 iree_cc_binary(
@@ -154,7 +144,7 @@ iree_cc_binary(
     iree::io::parameter_index
     iree::io::scope_map
     iree::io::stream
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 iree_cc_binary(
@@ -169,7 +159,7 @@ iree_cc_binary(
     iree::base::internal::flatcc::parsing
     iree::schemas::instruments
     iree::schemas::instruments::dispatch_def_c_fbs
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 iree_cc_binary(
@@ -186,7 +176,7 @@ iree_cc_binary(
     iree::base::internal::flatcc::parsing
     iree::schemas::bytecode_module_def_c_fbs
     iree::vm::bytecode::module
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 iree_cc_binary(
@@ -201,7 +191,7 @@ iree_cc_binary(
     iree::io::parameter_index
     iree::io::scope_map
     iree::tooling::parameter_util
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 
 # Only enable fatelf tool when we're compiling it in.
@@ -219,7 +209,7 @@ iree_cc_binary(
     iree::base::internal::file_io
     iree::base::internal::path
     iree::hal::local::elf::elf_module
-  INSTALL_COMPONENT IREETools-Runtime    
+  INSTALL_COMPONENT IREETools-Runtime
 )
 endif()  # IREE_HAL_EXECUTABLE_*_EMBEDDED_ELF
 
@@ -240,29 +230,9 @@ iree_cc_binary(
 
 iree_cc_binary(
   NAME
-    iree-run-trace
-  SRCS
-    "iree-run-trace-main.c"
-  DEPS
-    iree::base
-    iree::base::internal::flags
-    iree::base::internal::path
-    iree::hal
-    iree::modules::hal
-    iree::tooling::device_util
-    iree::tooling::trace_replay
-    iree::tooling::vm_util
-    iree::tooling::yaml_util
-    iree::vm
-    yaml
-  INSTALL_COMPONENT IREETools-Runtime    
-)
-
-iree_cc_binary(
-  NAME
     iree-e2e-matmul-test
   SRCS
-    "iree-e2e-matmul-test.c"
+    "iree-e2e-matmul-test.cc"
   DEPS
     iree::base
     iree::base::internal::cpu
@@ -270,12 +240,11 @@ iree_cc_binary(
     iree::base::internal::path
     iree::hal
     iree::modules::hal
+    iree::tooling::context_util
     iree::tooling::device_util
-    iree::tooling::trace_replay
     iree::tooling::vm_util
-    iree::tooling::yaml_util
     iree::vm
-    yaml
+    iree::vm::cc
 )
 
 if(IREE_BUILD_COMPILER)
@@ -291,6 +260,22 @@ if(IREE_BUILD_COMPILER)
     install(
       TARGETS clang
       COMPONENT IREETools-CompilerExtra
+      RUNTIME DESTINATION bin
+    )
+  endif()
+
+  if(IREE_FILECHECK_TARGET)
+    install(
+      TARGETS FileCheck
+      COMPONENT IREETools-CompilerDev
+      RUNTIME DESTINATION bin
+    )
+  endif()
+
+  if(IREE_NOT_TARGET)
+    install(
+      TARGETS not
+      COMPONENT IREETools-CompilerDev
       RUNTIME DESTINATION bin
     )
   endif()

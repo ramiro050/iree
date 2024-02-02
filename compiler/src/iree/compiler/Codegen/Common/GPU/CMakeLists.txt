@@ -44,19 +44,24 @@ iree_cc_library(
     CommonGPUPasses
   HDRS
     "GPUPatterns.h"
+    "GPUVectorDistribution.h"
     "Passes.h"
   SRCS
     "GPUCheckResourceUsage.cpp"
     "GPUDistribute.cpp"
     "GPUDistributeSharedMemoryCopy.cpp"
+    "GPUDistributionPatterns.cpp"
     "GPUGeneralizeNamedOps.cpp"
+    "GPULowerToUKernels.cpp"
     "GPUMultiBuffering.cpp"
     "GPUPatterns.cpp"
     "GPUPipelining.cpp"
     "GPUReduceBankConflicts.cpp"
     "GPUTensorAlloc.cpp"
     "GPUTensorTile.cpp"
+    "GPUTensorTileToSerialLoops.cpp"
     "GPUTileReduction.cpp"
+    "GPUVectorDistribution.cpp"
     "Passes.cpp"
     "VectorReductionToGPU.cpp"
     "WorkGroupSwizzle.cpp"
@@ -66,6 +71,7 @@ iree_cc_library(
     ::PassesIncGen
     IREELinalgExtDialect
     IREELinalgExtTransforms
+    IREEVectorExtDialect
     LLVMSupport
     MLIRAffineDialect
     MLIRAffineTransforms
@@ -74,6 +80,7 @@ iree_cc_library(
     MLIRBufferizationDialect
     MLIRDestinationStyleOpInterface
     MLIRFuncDialect
+    MLIRFunctionInterfaces
     MLIRGPUDialect
     MLIRGPUTransformOps
     MLIRGPUTransforms
@@ -86,6 +93,7 @@ iree_cc_library(
     MLIRMemRefTransforms
     MLIRNVGPUDialect
     MLIRPass
+    MLIRRewrite
     MLIRSCFDialect
     MLIRSCFTransforms
     MLIRSCFUtils
@@ -96,6 +104,7 @@ iree_cc_library(
     MLIRVectorDialect
     MLIRVectorToSCF
     MLIRVectorTransforms
+    iree::compiler::Codegen::Common
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Codegen::Transforms
     iree::compiler::Codegen::Utils

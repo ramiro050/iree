@@ -11,11 +11,14 @@
 #include <string.h>
 
 #include "experimental/hip/dynamic_symbols.h"
+#include "experimental/hip/graph_command_buffer.h"
 #include "experimental/hip/hip_allocator.h"
 #include "experimental/hip/hip_buffer.h"
 #include "experimental/hip/memory_pools.h"
 #include "experimental/hip/nop_executable_cache.h"
+#include "experimental/hip/pipeline_layout.h"
 #include "experimental/hip/status_util.h"
+#include "experimental/hip/stream_command_buffer.h"
 #include "iree/base/internal/arena.h"
 #include "iree/base/internal/math.h"
 #include "iree/base/tracing.h"
@@ -75,6 +78,7 @@ IREE_API_EXPORT void iree_hal_hip_device_params_initialize(
   memset(out_params, 0, sizeof(*out_params));
   out_params->arena_block_size = 32 * 1024;
   out_params->queue_count = 1;
+  out_params->command_buffer_mode = IREE_HAL_HIP_COMMAND_BUFFER_MODE_GRAPH;
   out_params->async_allocations = true;
 }
 
@@ -322,8 +326,23 @@ static iree_status_t iree_hal_hip_device_create_command_buffer(
     iree_hal_command_category_t command_categories,
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "command buffer not yet implmeneted");
+  iree_hal_hip_device_t* device = iree_hal_hip_device_cast(base_device);
+
+  switch (device->params.command_buffer_mode) {
+    case IREE_HAL_HIP_COMMAND_BUFFER_MODE_GRAPH:
+      return iree_hal_hip_graph_command_buffer_create(
+          base_device, device->hip_symbols, device->hip_context, mode,
+          command_categories, queue_affinity, binding_capacity,
+          &device->block_pool, device->host_allocator, out_command_buffer);
+    case IREE_HAL_HIP_COMMAND_BUFFER_MODE_STREAM:
+      return iree_hal_deferred_command_buffer_create(
+          base_device, mode, command_categories, binding_capacity,
+          &device->block_pool, iree_hal_device_host_allocator(base_device),
+          out_command_buffer);
+    default:
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "invalid command buffer mode");
+  }
 }
 
 static iree_status_t iree_hal_hip_device_create_descriptor_set_layout(
@@ -332,8 +351,10 @@ static iree_status_t iree_hal_hip_device_create_descriptor_set_layout(
     iree_host_size_t binding_count,
     const iree_hal_descriptor_set_layout_binding_t* bindings,
     iree_hal_descriptor_set_layout_t** out_descriptor_set_layout) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "descriptor set layout not yet implmeneted");
+  iree_hal_hip_device_t* device = iree_hal_hip_device_cast(base_device);
+  return iree_hal_hip_descriptor_set_layout_create(
+      flags, binding_count, bindings, device->host_allocator,
+      out_descriptor_set_layout);
 }
 
 static iree_status_t iree_hal_hip_device_create_event(
@@ -364,8 +385,10 @@ static iree_status_t iree_hal_hip_device_create_pipeline_layout(
     iree_host_size_t set_layout_count,
     iree_hal_descriptor_set_layout_t* const* set_layouts,
     iree_hal_pipeline_layout_t** out_pipeline_layout) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "pipeline layout not yet implmeneted");
+  iree_hal_hip_device_t* device = iree_hal_hip_device_cast(base_device);
+  return iree_hal_hip_pipeline_layout_create(
+      set_layout_count, set_layouts, push_constants, device->host_allocator,
+      out_pipeline_layout);
 }
 
 static iree_status_t iree_hal_hip_device_create_semaphore(
@@ -393,8 +416,36 @@ static iree_status_t iree_hal_hip_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "queue alloca not yet implmeneted");
+  iree_hal_hip_device_t* device = iree_hal_hip_device_cast(base_device);
+
+  // NOTE: block on the semaphores here; we could avoid this by properly
+  // sequencing device work with semaphores. The HIP HAL is not currently
+  // asynchronous.
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+
+  // Allocate from the pool; likely to fail in cases of virtual memory
+  // exhaustion but the error may be deferred until a later synchronization.
+  // If pools are not supported we allocate a buffer as normal from whatever
+  // allocator is set on the device.
+  iree_status_t status = iree_ok_status();
+  if (device->supports_memory_pools) {
+    status = iree_hal_hip_memory_pools_allocate(
+        &device->memory_pools, device->hip_stream, pool, params,
+        allocation_size, out_buffer);
+  } else {
+    status = iree_hal_allocator_allocate_buffer(
+        iree_hal_device_allocator(base_device), params, allocation_size,
+        out_buffer);
+  }
+
+  // Only signal if not returning a synchronous error - synchronous failure
+  // indicates that the stream is unchanged (it's not really since we waited
+  // above, but we at least won't deadlock like this).
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_semaphore_list_signal(signal_semaphore_list);
+  }
+  return status;
 }
 
 // TODO: implement multiple streams; today we only have one and queue_affinity
@@ -406,8 +457,29 @@ static iree_status_t iree_hal_hip_device_queue_dealloca(
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "queue dealloca not yet implmeneted");
+  iree_hal_hip_device_t* device = iree_hal_hip_device_cast(base_device);
+
+  // NOTE: block on the semaphores here; we could avoid this by properly
+  // sequencing device work with semaphores. The HIP HAL is not currently
+  // asynchronous.
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+
+  // Schedule the buffer deallocation if we got it from a pool and otherwise
+  // drop it on the floor and let it be freed when the buffer is released.
+  iree_status_t status = iree_ok_status();
+  if (device->supports_memory_pools) {
+    status = iree_hal_hip_memory_pools_deallocate(&device->memory_pools,
+                                                  device->hip_stream, buffer);
+  }
+
+  // Only signal if not returning a synchronous error - synchronous failure
+  // indicates that the stream is unchanged (it's not really since we waited
+  // above, but we at least won't deadlock like this).
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_semaphore_list_signal(signal_semaphore_list);
+  }
+  return status;
 }
 
 static iree_status_t iree_hal_hip_device_queue_read(
@@ -438,8 +510,25 @@ static iree_status_t iree_hal_hip_device_queue_execute(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
     iree_hal_command_buffer_t* const* command_buffers) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "queue execution not yet implmeneted");
+  iree_hal_hip_device_t* device = iree_hal_hip_device_cast(base_device);
+
+  for (iree_host_size_t i = 0; i < command_buffer_count; i++) {
+    hipGraphExec_t exec =
+        iree_hal_hip_graph_command_buffer_handle(command_buffers[i]);
+    IREE_HIP_RETURN_IF_ERROR(device->hip_symbols,
+                             hipGraphLaunch(exec, device->hip_stream),
+                             "hipGraphLaunch");
+  }
+
+  // TODO(nithinsubbiah): implement semaphores - for now this conservatively
+  // synchronizes after every submit.
+  IREE_TRACE_ZONE_BEGIN_NAMED(z0, "hipStreamSynchronize");
+  IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, device->hip_symbols, hipStreamSynchronize(device->hip_stream),
+      "hipStreamSynchronize");
+  IREE_TRACE_ZONE_END(z0);
+
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_hip_device_queue_flush(

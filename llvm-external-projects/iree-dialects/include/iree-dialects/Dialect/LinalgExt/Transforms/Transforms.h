@@ -40,45 +40,6 @@ struct ForallOpToAsyncRewriter : public OpRewritePattern<scf::ForallOp> {
   }
 };
 
-/// Pattern to rewrite a ForallOp to an scf::ForOp.
-struct ForallOpToScfForRewriter : public OpRewritePattern<scf::ForallOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  FailureOr<scf::ForOp>
-  returningMatchAndRewrite(scf::ForallOp forallOp,
-                           PatternRewriter &rewriter) const;
-
-  LogicalResult matchAndRewrite(scf::ForallOp forallOp,
-                                PatternRewriter &rewriter) const override {
-    return returningMatchAndRewrite(forallOp, rewriter);
-  }
-};
-
-struct FusionResult {
-  TilingInterface consumerOp;
-  SmallVector<TilingInterface> fusedOps;
-};
-
-/// Pattern to fuse the producers of a tileable op.
-struct LinalgExtFusionPattern
-    : public OpInterfaceRewritePattern<TilingInterface> {
-  LinalgExtFusionPattern(MLIRContext *context, ArrayRef<int64_t> operandsToFuse)
-      : OpInterfaceRewritePattern<TilingInterface>(context),
-        operandsToFuse(operandsToFuse.begin(), operandsToFuse.end()) {}
-
-  FailureOr<FusionResult>
-  returningMatchAndRewrite(TilingInterface consumerOp,
-                           PatternRewriter &rewriter) const;
-
-  LogicalResult matchAndRewrite(TilingInterface consumerOp,
-                                PatternRewriter &rewriter) const override {
-    return returningMatchAndRewrite(consumerOp, rewriter);
-  }
-
-private:
-  SmallVector<int64_t> operandsToFuse;
-};
-
 //===----------------------------------------------------------------------===//
 // Transformations exposed as patterns, moved from upstream MLIR as IREE still
 // heavily relies on patterns that compose through filters.
@@ -90,7 +51,7 @@ splitReduction(PatternRewriter &b, linalg::LinalgOp op,
                const linalg::ControlSplitReductionFn &controlSplitReductionFn,
                const LinalgTransformationFilter &filter,
                bool useAlloc = false) {
-  if (failed(filter.checkAndNotify(b, op)) || !op.hasTensorSemantics() ||
+  if (failed(filter.checkAndNotify(b, op)) || !op.hasPureTensorSemantics() ||
       op.getNumReductionLoops() != 1 || op.getNumDpsInits() != 1 ||
       !op.hasOnlyProjectedPermutations())
     return b.notifyMatchFailure(op, "precondition not met");
@@ -145,14 +106,14 @@ struct LinalgBasePromotionPattern : public RewritePattern {
     // So to fail properly, we should be cloning
     // the op and deleting the previous op. This
     // needs more investigation.
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     std::optional<linalg::LinalgOp> promotedOp =
         promoteSubViews(rewriter, cast<linalg::LinalgOp>(op), options);
     if (!promotedOp) {
-      rewriter.cancelRootUpdate(op);
+      rewriter.cancelOpModification(op);
       return op->emitError("subview promotion failed");
     }
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
     filter.replaceLinalgTransformationFilter(rewriter, op);
     return success();
   }

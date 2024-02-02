@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --iree-spirv-breakdown-large-vector %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-spirv-breakdown-large-vector))" %s | FileCheck %s
 
 // CHECK-LABEL: func @extract_strided_slice_8_elements
 func.func @extract_strided_slice_8_elements(%input: vector<8xf16>) -> vector<4xf16> {
@@ -44,7 +44,7 @@ func.func @bitcast_extract_extend_0(%input: vector<1xi32>) -> vector<4xi32> {
 
 // CHECK-LABEL: func @bitcast_extract_extend_0
 //  CHECK-SAME:  (%[[INPUT:.+]]: vector<1xi32>)
-//       CHECK:   %[[ZERO:.+]] = arith.constant dense<0> : vector<4xi32>
+//   CHECK-DAG:   %[[ZERO:.+]] = arith.constant dense<0> : vector<4xi32>
 //   CHECK-DAG:   %[[MASK:.+]] = arith.constant 15 : i32
 //   CHECK-DAG:   %[[OFF1:.+]] = arith.constant 4 : i32
 //   CHECK-DAG:   %[[OFF2:.+]] = arith.constant 8 : i32
@@ -75,7 +75,7 @@ func.func @bitcast_extract_extend_1(%input: vector<4xi32>) -> vector<4xi32> {
 
 // CHECK-LABEL: func.func @bitcast_extract_extend_1
 //  CHECK-SAME: (%[[INPUT:.+]]: vector<4xi32>)
-//       CHECK:   %[[ZERO:.+]] = arith.constant dense<0> : vector<4xi32>
+//   CHECK-DAG:   %[[ZERO:.+]] = arith.constant dense<0> : vector<4xi32>
 //   CHECK-DAG:   %[[MASK:.+]] = arith.constant 15 : i32
 //   CHECK-DAG:   %[[OFF0:.+]] = arith.constant 16 : i32
 //   CHECK-DAG:   %[[OFF1:.+]] = arith.constant 20 : i32

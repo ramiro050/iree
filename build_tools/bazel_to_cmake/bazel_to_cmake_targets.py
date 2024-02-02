@@ -97,7 +97,6 @@ class TargetConverter:
                 "@com_github_dvidelabs_flatcc//:flatcc": ["flatcc"],
                 "@com_github_dvidelabs_flatcc//:parsing": ["flatcc::parsing"],
                 "@com_github_dvidelabs_flatcc//:runtime": ["flatcc::runtime"],
-                "@com_github_yaml_libyaml//:yaml": ["yaml"],
                 "@com_google_googletest//:gtest": ["gmock", "gtest"],
                 "@spirv_cross//:spirv_cross_lib": ["spirv-cross-msl"],
                 "@cpuinfo": ["${IREE_CPUINFO_TARGET}"],

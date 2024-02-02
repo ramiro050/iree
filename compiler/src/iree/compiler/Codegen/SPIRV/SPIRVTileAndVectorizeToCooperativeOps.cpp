@@ -27,9 +27,7 @@
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Conversion/MemRefToSPIRV/MemRefToSPIRV.h"
 #include "mlir/Conversion/VectorToGPU/VectorToGPU.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -40,7 +38,6 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
-#include "mlir/Interfaces/VectorInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -50,10 +47,10 @@ namespace mlir::iree_compiler {
 
 namespace {
 
-void debugPrint(func::FuncOp funcOp, const char *message) {
+void debugPrint(Operation *op, const char *message) {
   LLVM_DEBUG({
     llvm::dbgs() << "//--- " << message << " ---//\n";
-    funcOp.print(llvm::dbgs(), OpPrintingFlags().useLocalScope());
+    op->print(llvm::dbgs(), OpPrintingFlags().useLocalScope());
     llvm::dbgs() << "\n\n";
   });
 }
@@ -68,23 +65,31 @@ static SmallVector<int64_t> getTargetCooperativeOpSize(linalg::LinalgOp op) {
   return getTileSizes(op, 3); // For native vector sizes
 }
 
-constexpr char coopMatShapeAttrName[] = "iree.spirv.coop_mat_shape";
+constexpr char coopMatTypeAttrName[] = "iree.spirv.coopmatrix.type";
+constexpr char coopMatShapeAttrName[] = "iree.spirv.coopmatrix.shape";
 
-/// Sets the chosen cooperative matrix shape for CodeGen onto the
+/// Sets the chosen cooperative matrix type/shape for CodeGen onto the
 /// hal.executable.export op for the given `funcOp`.
-void setSPIRVCooperativeMatrixShape(func::FuncOp funcOp,
-                                    ArrayRef<int64_t> shape) {
+void setSPIRVCooperativeMatrixInfo(mlir::FunctionOpInterface funcOp,
+                                   linalg::LinalgOp rootOp,
+                                   ArrayRef<int64_t> shape) {
   auto moduleOp = funcOp->getParentOfType<ModuleOp>();
   auto exportOp = getAllEntryPoints(moduleOp).lookup(funcOp.getName());
 
   Builder b(funcOp.getContext());
   exportOp->setAttr(coopMatShapeAttrName, b.getDenseI64ArrayAttr(shape));
+  auto inputType = cast<ShapedType>(rootOp.getDpsInputs().front().getType());
+  auto outputType = cast<ShapedType>(rootOp.getDpsInits().front().getType());
+  auto elementTypes = b.getTypeArrayAttr(
+      {inputType.getElementType(), outputType.getElementType()});
+  exportOp->setAttr(coopMatTypeAttrName, elementTypes);
 }
 
 /// Returns the chosen cooperative matrix shape for CodeGen from the
 /// hal.executable.export op for the given `funcOp`. Returns an empty
 /// ArrayRef if cannot query.
-ArrayRef<int64_t> getSPIRVCooperativeMatrixShape(func::FuncOp funcOp) {
+ArrayRef<int64_t>
+getSPIRVCooperativeMatrixShape(mlir::FunctionOpInterface funcOp) {
   auto moduleOp = funcOp->getParentOfType<ModuleOp>();
   auto exportOp = getAllEntryPoints(moduleOp).lookup(funcOp.getName());
   auto attr = exportOp->getAttrOfType<DenseI64ArrayAttr>(coopMatShapeAttrName);
@@ -124,7 +129,7 @@ static SmallVector<int64_t> deduceSubgroupCounts(linalg::LinalgOp op) {
 }
 
 /// Tiles Linalg ops with workgroup markers to subgroups.
-static LogicalResult tileToSubgroup(func::FuncOp funcOp,
+static LogicalResult tileToSubgroup(mlir::FunctionOpInterface funcOp,
                                     ArrayRef<int64_t> subgroupCounts,
                                     const unsigned subgroupSize,
                                     ArrayRef<int64_t> subgroupTileSizes) {
@@ -335,7 +340,7 @@ public:
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
-    func::FuncOp funcOp = getOperation();
+    auto funcOp = getOperation();
 
     // First we need to discover the CodeGen lowering configuration. It was
     // decided earlier and attached to a linalg op as an attribute.
@@ -357,7 +362,7 @@ public:
     // given that after tiling and vectorization we won't have the root Linalg
     // op anymore.
     SmallVector<int64_t> cooperativeOpSize = getTargetCooperativeOpSize(rootOp);
-    setSPIRVCooperativeMatrixShape(funcOp, cooperativeOpSize);
+    setSPIRVCooperativeMatrixInfo(funcOp, rootOp, cooperativeOpSize);
 
     SmallVector<int64_t> subgroupCounts = deduceSubgroupCounts(rootOp);
 
@@ -401,7 +406,7 @@ public:
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
-    func::FuncOp funcOp = getOperation();
+    auto funcOp = getOperation();
 
     // First discover the chosen cooperative matrix shape. It was decided
     // earlier and attached to the export op as an attribute.
@@ -455,12 +460,12 @@ public:
 
 } // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
 createSPIRVTileToCooperativeOpsPass() {
   return std::make_unique<SPIRVTileToCooperativeOpsPass>();
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
 createSPIRVVectorizeToCooperativeOpsPass() {
   return std::make_unique<SPIRVVectorizeToCooperativeOpsPass>();
 }

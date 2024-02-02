@@ -16,7 +16,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/CommonFolders.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
@@ -25,6 +24,7 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo-iree/Conversion/Preprocessing/Passes.h"
 #include "stablehlo-iree/Conversion/Preprocessing/Rewriters.h"
@@ -40,6 +40,16 @@ namespace {
 // This is an upper limit on how many elements canonicalization patterns are
 // allowed to materialize as new constants.
 constexpr int64_t kFoldOpEltLimit = 65536;
+
+static bool isIotaRange(ArrayRef<int64_t> dims) {
+  for (auto [idx, value] : llvm::enumerate(dims)) {
+    if (idx != value) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 static bool isIotaRange(ElementsAttr attr) {
   auto elems = attr.tryGetValues<APInt>();
@@ -132,7 +142,7 @@ struct AddOpCanon final : OpRewritePattern<mlir::stablehlo::AddOp> {
 
     // The canonical form has the constant operand as the RHS.
     if (isa<IntegerType>(type.getElementType()) && lhsAttr && !rhsAttr) {
-      rewriter.updateRootInPlace(op, [op, lhs, rhs] {
+      rewriter.modifyOpInPlace(op, [op, lhs, rhs] {
         op->setOperands(ValueRange{rhs, lhs});
       });
       return success();
@@ -229,7 +239,7 @@ struct MulOpCanon final : OpRewritePattern<mlir::stablehlo::MulOp> {
 
     // The canonical form has the constant operand as the RHS.
     if (isa<IntegerType>(type.getElementType()) && lhsAttr && !rhsAttr) {
-      rewriter.updateRootInPlace(op, [op, lhs, rhs] {
+      rewriter.modifyOpInPlace(op, [op, lhs, rhs] {
         op->setOperands(ValueRange{rhs, lhs});
       });
       return success();
@@ -371,7 +381,7 @@ struct CompareOpCanon final : OpRewritePattern<mlir::stablehlo::CompareOp> {
 
     // The canonical form has the constant operand as the RHS.
     if (lhsAttr && !rhsAttr) {
-      rewriter.updateRootInPlace(op, [&op, direction, lhs, rhs] {
+      rewriter.modifyOpInPlace(op, [&op, direction, lhs, rhs] {
         op.setComparisonDirection(invertDirection(direction));
         op->setOperands(ValueRange{rhs, lhs});
       });
@@ -469,7 +479,7 @@ struct BroadcastInDimOpCanon final
       return failure();
 
     // Fold when broadcast is a noop.
-    DenseIntElementsAttr dims = op.getBroadcastDimensions();
+    auto dims = op.getBroadcastDimensions();
     bool isDimsIota = isIotaRange(dims);
     if (type == operandTy && isDimsIota) {
       rewriter.replaceOp(op, operand);
@@ -485,7 +495,7 @@ struct BroadcastInDimOpCanon final
       return success();
     }
 
-    auto bsDimIndices = dims.getValues<int64_t>();
+    auto bsDimIndices = dims;
     if (operandTy.hasStaticShape() && type.hasStaticShape() &&
         type.getNumElements() == operandTy.getNumElements()) {
       // BroadcastInDim equivalent to reshape.
@@ -505,12 +515,10 @@ struct BroadcastInDimOpCanon final
     // Eliminate redundant nested BroadcastInDim.
     if (auto broadcastInDimOp =
             operand.getDefiningOp<mlir::stablehlo::BroadcastInDimOp>()) {
-      auto newIndices = cast<DenseIntElementsAttr>(
-          broadcastInDimOp.getBroadcastDimensions().mapValues(
-              dims.getElementType(), [&bsDimIndices](const APInt &dim) {
-                return APInt(dim.getBitWidth(),
-                             bsDimIndices[dim.getSExtValue()], true);
-              }));
+      auto newIndices =
+          rewriter.getDenseI64ArrayAttr(llvm::to_vector(llvm::map_range(
+              broadcastInDimOp.getBroadcastDimensions(),
+              [&bsDimIndices](int64_t dim) { return bsDimIndices[dim]; })));
       rewriter.replaceOpWithNewOp<mlir::stablehlo::BroadcastInDimOp>(
           op, type, broadcastInDimOp.getOperand(), newIndices);
       return success();
@@ -631,7 +639,7 @@ struct DynamicBroadcastInDimOpNotActuallyDynamic final
     // output has static shape, replace with broadcast_in_dim
     if (type.hasStaticShape()) {
       rewriter.replaceOpWithNewOp<mlir::stablehlo::BroadcastInDimOp>(
-          op, type, op.getOperand(), op.getBroadcastDimensions());
+          op, type, op.getOperand(), op.getBroadcastDimensionsAttr());
       return success();
     }
 
@@ -648,7 +656,7 @@ struct DynamicBroadcastInDimOpNotActuallyDynamic final
         refineOpWithNewOp<mlir::stablehlo::BroadcastInDimOp>(
             rewriter, op,
             RankedTensorType::get(outputShape, type.getElementType()),
-            op.getOperand(), op.getBroadcastDimensions());
+            op.getOperand(), op.getBroadcastDimensionsAttr());
         return success();
       }
     }
@@ -670,16 +678,11 @@ struct ChainedDynamicBroadcastInDimCanonicalization final
       return failure();
 
     // Compose broadcast dimensions.
-    DenseIntElementsAttr precedingBcastDims =
-        precedingBcast.getBroadcastDimensions();
-    DenseIntElementsAttr bcastDims = bcast.getBroadcastDimensions();
-    SmallVector<APInt> composition;
-    for (APInt precedingDim : precedingBcastDims) {
-      composition.push_back(
-          *(bcastDims.value_begin<APInt>() + precedingDim.getZExtValue()));
+    SmallVector<int64_t> composition;
+    for (int64_t precedingDim : precedingBcast.getBroadcastDimensions()) {
+      composition.push_back(bcast.getBroadcastDimensions()[precedingDim]);
     }
-    auto composedBcastDims =
-        DenseIntElementsAttr::get(precedingBcastDims.getType(), composition);
+    auto composedBcastDims = rewriter.getDenseI64ArrayAttr(composition);
 
     rewriter.replaceOpWithNewOp<mlir::stablehlo::DynamicBroadcastInDimOp>(
         bcast, bcast.getType(), precedingBcast.getOperand(),
@@ -928,9 +931,9 @@ struct GatherOpCanon final : OpRewritePattern<mlir::stablehlo::GatherOp> {
     auto sliceType = RankedTensorType::get(sliceShape, elementType);
     Value result = rewriter.create<mlir::stablehlo::SliceOp>(
         gather.getLoc(), sliceType, gather.getOperand(),
-        rewriter.getI64TensorAttr(sliceStart),
-        rewriter.getI64TensorAttr(sliceEnd),
-        rewriter.getI64TensorAttr(sliceStride));
+        rewriter.getDenseI64ArrayAttr(sliceStart),
+        rewriter.getDenseI64ArrayAttr(sliceEnd),
+        rewriter.getDenseI64ArrayAttr(sliceStride));
 
     ArrayRef<int64_t> collapsedSliceDims = dnums.getCollapsedSliceDims();
     if (!collapsedSliceDims.empty()) {
@@ -1030,7 +1033,7 @@ struct TransposeIsReshape final
               "tensor type");
     }
 
-    SmallVector<int64_t> permValues(permutation.getValues<int64_t>());
+    SmallVector<int64_t> permValues(permutation);
 
     SmallVector<int64_t> nonZeroPerms;
     nonZeroPerms.reserve(permValues.size());
@@ -1098,7 +1101,7 @@ struct ZeroExtentTensorCanon final : RewritePattern {
       int operandNum = operand.getOperandNumber();
       auto emptyTensorOp = rewriter.create<tensor::EmptyOp>(
           loc, operandType->getShape(), operandType->getElementType());
-      rewriter.updateRootInPlace(
+      rewriter.modifyOpInPlace(
           owner, [&]() { owner->setOperand(operandNum, emptyTensorOp); });
       didUpdate = true;
     }

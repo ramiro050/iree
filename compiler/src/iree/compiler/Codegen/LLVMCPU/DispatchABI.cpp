@@ -13,7 +13,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Path.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 
@@ -73,7 +72,7 @@ static unsigned getDITypeSizeInBits(LLVM::DITypeAttr typeAttr) {
 }
 
 ExecutableLibraryDI::ExecutableLibraryDI(const LLVMTypeConverter *typeConverter)
-    : typeConverter(typeConverter), builder(&typeConverter->getContext()) {
+    : builder(&typeConverter->getContext()) {
   auto *context = builder.getContext();
   fileAttr = LLVM::DIFileAttr::get(
       context, "runtime/src/iree/hal/local/executable_library.h", ".");
@@ -485,7 +484,8 @@ HALDispatchABI::getInputTypes(MLIRContext *context,
 
 // static
 LLVM::DISubprogramAttr
-HALDispatchABI::buildScopeAttr(mlir::ModuleOp moduleOp, StringRef funcName,
+HALDispatchABI::buildScopeAttr(mlir::ModuleOp moduleOp,
+                               LLVM::LLVMFuncOp llvmFuncOp,
                                const LLVMTypeConverter *typeConverter) {
   auto *context = &typeConverter->getContext();
   Builder builder(context);
@@ -499,9 +499,9 @@ HALDispatchABI::buildScopeAttr(mlir::ModuleOp moduleOp, StringRef funcName,
       LLVM::DIFileAttr::get(context, llvm::sys::path::filename(inputFilePath),
                             llvm::sys::path::parent_path(inputFilePath));
   auto compileUnitAttr = LLVM::DICompileUnitAttr::get(
-      context, llvm::dwarf::DW_LANG_C17, fileAttr,
-      builder.getStringAttr("IREE"), /*isOptimized=*/true,
-      LLVM::DIEmissionKind::Full);
+      context, DistinctAttr::create(UnitAttr::get(context)),
+      llvm::dwarf::DW_LANG_C17, fileAttr, builder.getStringAttr("IREE"),
+      /*isOptimized=*/true, LLVM::DIEmissionKind::Full);
 
   auto int32TypeAttr =
       LLVM::DIBasicTypeAttr::get(context, llvm::dwarf::DW_TAG_base_type, "int",
@@ -516,13 +516,18 @@ HALDispatchABI::buildScopeAttr(mlir::ModuleOp moduleOp, StringRef funcName,
           di.getPtrOf(di.getConstOf(di.getWorkgroupStateV0T())),
       });
 
-  auto funcNameAttr = builder.getStringAttr(funcName);
-  return LLVM::DISubprogramAttr::get(
-      context, compileUnitAttr, fileAttr, funcNameAttr, funcNameAttr, fileAttr,
-      /*line=*/1,
-      /*scopeline=*/1,
-      LLVM::DISubprogramFlags::Definition | LLVM::DISubprogramFlags::Optimized,
-      subroutineTypeAttr);
+  auto funcNameAttr = builder.getStringAttr(llvmFuncOp.getName());
+  DistinctAttr id;
+  if (!llvmFuncOp.isExternal()) {
+    id = DistinctAttr::create(UnitAttr::get(context));
+  }
+  return LLVM::DISubprogramAttr::get(context, id, compileUnitAttr, fileAttr,
+                                     funcNameAttr, funcNameAttr, fileAttr,
+                                     /*line=*/1,
+                                     /*scopeline=*/1,
+                                     LLVM::DISubprogramFlags::Definition |
+                                         LLVM::DISubprogramFlags::Optimized,
+                                     subroutineTypeAttr);
 }
 
 // Returns the most local DISubprogramAttr starting from |forOp|.

@@ -11,12 +11,14 @@
 
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Codegen/LLVMGPU/Passes.h"
+#include "iree/compiler/Dialect/HAL/Target/LLVMLinkerUtils.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
 #include "iree/compiler/PluginAPI/Client.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "iree/compiler/Utils/ToolUtils.h"
 #include "iree/schemas/rocm_executable_def_builder.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -47,6 +49,7 @@ struct ROCMOptions {
   bool linkBitcode = false;
   std::string bitcodeDirectory;
   int wavesPerEu = 0;
+  std::string enableROCMUkernels = "none";
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("ROCM HAL Target");
@@ -62,9 +65,26 @@ struct ROCMOptions {
                     llvm::cl::cat(category),
                     llvm::cl::desc("Optimization hint specifying minimum "
                                    "number of waves per execution unit"));
+    binder.opt<std::string>(
+        "iree-rocm-enable-ukernels", enableROCMUkernels,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Enables microkernels in the llvmcpu backend. May be "
+            "`default`, `none`, `all`, or a comma-separated list of "
+            "specific unprefixed microkernels to enable, e.g. `mmt4d`."));
   }
 };
 } // namespace
+
+static void dumpModuleToPath(StringRef path, StringRef baseName,
+                             StringRef suffix, StringRef extension,
+                             llvm::Module &module) {
+  llvm::SmallVector<char, 0> data;
+  llvm::raw_svector_ostream ostream(data);
+  module.print(ostream, nullptr);
+  dumpDataToPath(path, baseName, suffix, extension,
+                 StringRef(data.data(), data.size()));
+}
 
 static std::string translateModuleToObj(llvm::Module &module,
                                         llvm::TargetMachine &targetMachine) {
@@ -92,6 +112,20 @@ static std::string translateModuleToISA(llvm::Module &module,
     codegenPasses.run(module);
   }
   return targetISA;
+}
+
+// Modified from lib/Target/AMDGPU/AMDGPUAttributor.cpp.
+// Adds argument hints to preload kernel arguments to SGPRs.
+// TODO: Query max number of user SGPRs from target machine.
+static void addPreloadKernArgHint(llvm::Function *F) {
+  static constexpr size_t maxSGPRs = 16;
+  for (size_t i = 0, e = std::min(F->arg_size(), maxSGPRs); i != e; ++i) {
+    llvm::Argument *Arg = F->getArg(i);
+    // Check for incompatible attributes.
+    if (Arg->hasByRefAttr() || Arg->hasNestAttr())
+      break;
+    Arg->addAttr(llvm::Attribute::InReg);
+  }
 }
 
 class ROCMTargetBackend final : public TargetBackend {
@@ -198,13 +232,6 @@ public:
 
     ModuleOp innerModuleOp = variantOp.getInnerModule();
 
-    // Remove all the functions that are not part of the ROCM kernel.
-    // TODO: Find a better solution to handle this.
-    auto illegalFuncOps = llvm::to_vector(innerModuleOp.getOps<func::FuncOp>());
-    for (auto funcOp : illegalFuncOps) {
-      funcOp.erase();
-    }
-
     auto llvmModule =
         mlir::translateModuleToLLVMIR(innerModuleOp, context, libraryName);
     if (!llvmModule) {
@@ -220,6 +247,8 @@ public:
     std::vector<std::array<int32_t, 3>> workgroupSizes;
     SmallVector<uint32_t> workgroupLocalMemories;
     int32_t subgroupSize = 64;
+    StringRef subTarget = options.targetChip;
+    StringRef GFX9("gfx9");
     for (auto func : innerModuleOp.getOps<LLVM::LLVMFuncOp>()) {
       int32_t flatWgSize = 1;
       auto *llvmFunc = llvmModule->getFunction(func.getName());
@@ -262,12 +291,13 @@ public:
       if (options.wavesPerEu > 0)
         llvmFunc->addFnAttr("amdgpu-waves-per-eu",
                             std::to_string(options.wavesPerEu));
+      if (subTarget.starts_with(GFX9))
+        addPreloadKernArgHint(llvmFunc);
     }
 
     std::unique_ptr<llvm::TargetMachine> targetMachine;
     {
       llvm::Triple triple("amdgcn-amd-amdhsa");
-      const std::string GFX9("gfx9");
       std::string error;
       const llvm::Target *target =
           llvm::TargetRegistry::lookupTarget("", triple, error);
@@ -280,8 +310,7 @@ public:
       opt.NoInfsFPMath = false;
       opt.NoNaNsFPMath = true;
       std::string features;
-      std::string subTarget = options.targetChip.substr(0, 4);
-      if (GFX9 == subTarget) {
+      if (subTarget.starts_with(GFX9)) {
         features = "+sramecc,-xnack";
       } else {
         // GFX 10 or 11.
@@ -309,6 +338,23 @@ public:
     iree_compiler::FlatbufferBuilder builder;
     iree_hal_rocm_ExecutableDef_start_as_root(builder);
 
+    // Link user modules and libdevice (if required).
+    // Note that linking order matters:
+    llvm::Linker linker(*llvmModule);
+    if (failed(linkCmdlineBitcodeFiles(
+            variantOp.getLoc(), linker, llvm::Linker::OverrideFromSrc,
+            *targetMachine, llvmModule->getContext()))) {
+      return failure();
+    }
+
+    if (!options.enableROCMUkernels.empty() &&
+        options.enableROCMUkernels != "none") {
+      auto enabledUkernelsStr = StringRef(options.enableROCMUkernels);
+      linkUkernelBCFiles(llvmModule.get(), variantOp.getLoc(),
+                         enabledUkernelsStr, options.targetChip,
+                         options.bitcodeDirectory,
+                         llvm::Linker::OverrideFromSrc, *targetMachine);
+    }
     // Link module to Device Library
     if (options.linkBitcode) {
       if (options.bitcodeDirectory.empty()) {
@@ -320,9 +366,19 @@ public:
       linkROCDLIfNecessary(llvmModule.get(), options.targetChip,
                            options.bitcodeDirectory);
     }
+    if (!serOptions.dumpIntermediatesPath.empty()) {
+      dumpModuleToPath(serOptions.dumpIntermediatesPath,
+                       serOptions.dumpBaseName, variantOp.getName(),
+                       ".linked.ll", *llvmModule);
+    }
     // Add Optimize module
     optimizeModule(*llvmModule, *targetMachine);
-
+    // Store optimized ll.
+    if (!serOptions.dumpIntermediatesPath.empty()) {
+      dumpModuleToPath(serOptions.dumpIntermediatesPath,
+                       serOptions.dumpBaseName, variantOp.getName(),
+                       ".optimized.ll", *llvmModule);
+    }
     // Serialize hsaco kernel into the binary that we will embed in the
     // final FlatBuffer.
     std::unique_ptr<llvm::Module> moduleCopy;
@@ -405,6 +461,8 @@ private:
     };
     // Set target arch
     addConfig("target_arch", StringAttr::get(context, options.targetChip));
+
+    addConfig("ukernels", StringAttr::get(context, options.enableROCMUkernels));
 
     auto configAttr = b.getDictionaryAttr(configItems);
     return IREE::HAL::ExecutableTargetAttr::get(

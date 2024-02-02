@@ -80,6 +80,7 @@ iree_cc_library(
     MLIRAffineToStandard
     MLIRAnalysis
     MLIRArithDialect
+    MLIRArithToAMDGPU
     MLIRArithToLLVM
     MLIRArithTransforms
     MLIRBufferizationDialect
@@ -89,6 +90,7 @@ iree_cc_library(
     MLIRFuncDialect
     MLIRFuncToLLVM
     MLIRFuncTransforms
+    MLIRFunctionInterfaces
     MLIRGPUDialect
     MLIRGPUToNVVMTransforms
     MLIRGPUToROCDLTransforms
