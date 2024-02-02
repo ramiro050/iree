@@ -180,9 +180,8 @@ class ConvertFullyConnectedLayer
       int64_t kernelRank = kernelType.getRank();
       SmallVector<int64_t> perm(llvm::to_vector(llvm::seq(kernelRank)));
       std::swap(perm[perm.size() - 1], perm[perm.size() - 2]);
-      DenseIntElementsAttr permAttr = rewriter.getI64TensorAttr(perm);
       info.kernel = rewriter.create<stablehlo::TransposeOp>(
-          op.getLoc(), info.kernel, permAttr);
+          op.getLoc(), info.kernel, perm);
       kernelType = info.kernel.getType().cast<RankedTensorType>();
     }
 
