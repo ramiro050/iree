@@ -22,3 +22,9 @@ func.func @fully_connected$transpose(%input : tensor<1x100x200xi8>, %kernel : te
   %out = stablehlo.convert %dot_general : (tensor<1x100x300xi32>) -> tensor<1x100x300xf32>
   return %out : tensor<1x100x300xf32>
 }
+
+// CHECK-LABEL:   func.func @fully_connected$no_defining_op_for_convert_operand(
+func.func @fully_connected$no_defining_op_for_convert_operand(%input : tensor<i8>) -> tensor<i16> {
+  %out = stablehlo.convert %input : (tensor<i8>) -> tensor<i16>
+  return %out : tensor<i16>
+}

@@ -154,7 +154,7 @@ class ConvertFullyConnectedLayer
       return rewriter.notifyMatchFailure(op, msg);
     };
     auto dotGeneralOp =
-        dyn_cast<stablehlo::DotGeneralOp>(op.getOperand().getDefiningOp());
+        op.getOperand().getDefiningOp<stablehlo::DotGeneralOp>();
     if (!dotGeneralOp) {
       return error("expected stablehlo.dot_general as input");
     }
