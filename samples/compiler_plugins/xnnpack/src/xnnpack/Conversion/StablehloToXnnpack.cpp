@@ -183,7 +183,18 @@ class ConvertFullyConnectedLayer
       DenseIntElementsAttr permAttr = rewriter.getI64TensorAttr(perm);
       info.kernel = rewriter.create<stablehlo::TransposeOp>(
           op.getLoc(), info.kernel, permAttr);
+      kernelType = info.kernel.getType().cast<RankedTensorType>();
     }
+
+    auto offsetType = RankedTensorType::get(kernelType.getShape(),
+                                            rewriter.getIntegerType(8));
+    int8_t offsetInt = 8;
+    Value offset = rewriter.create<stablehlo::ConstantOp>(
+        op.getLoc(), DenseIntElementsAttr::get(offsetType, offsetInt));
+    offset =
+        rewriter.create<stablehlo::ConvertOp>(op.getLoc(), kernelType, offset);
+    info.kernel =
+        rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
     rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
         op, outputType, info.input, info.kernel);
@@ -298,9 +309,15 @@ class ConvertStablehloToXnnpackPass
           "CheckF32RankedTensorType", checkF32RankedTensorType);
       patterns.getPDLPatterns().registerConstraintFunction(
           "CheckInnermostReduction", checkInnermostReduction);
+    } else {
+      // We have two patterns that perform the `fully_connected` transformation.
+      // One is a PDLL pattern, and the other one is the C++ pattern
+      // `ConvertFullyConnnectedLayer`. Since the pattern applicator makes no
+      // guarantees as to which pattern will be applied first, we need to make
+      // sure only one of the two pattern is present so that our tests check the
+      // right paths.
+      patterns.add<ConvertFullyConnectedLayer>(context);
     }
-
-    patterns.add<ConvertFullyConnectedLayer>(context);
 
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
