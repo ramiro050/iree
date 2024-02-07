@@ -8,7 +8,9 @@
 
 #include "iree/compiler/Dialect/Stream/Conversion/PatternUtils.h"
 #include "iree/compiler/Dialect/Stream/IR/StreamOps.h"
+#include "iree/compiler/Dialect/Util/Conversion/ConversionPatterns.h"
 #include "iree/compiler/Dialect/Util/IR/UtilOps.h"
+#include "iree/compiler/Dialect/Util/IR/UtilTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -137,10 +139,9 @@ struct GlobalOpExpansion
         initialValueSize = rewriter.create<IREE::Stream::ResourceSizeOp>(
             globalOp.getLoc(), indexType, initialValue);
       }
-      rewriter.create<IREE::Util::GlobalStoreOp>(
-          globalOp.getLoc(), initialValue, resourceOp.getSymName());
-      rewriter.create<IREE::Util::GlobalStoreOp>(
-          globalOp.getLoc(), initialValueSize, resourceSizeOp.getSymName());
+      resourceOp.createStoreOp(globalOp.getLoc(), initialValue, rewriter);
+      resourceSizeOp.createStoreOp(globalOp.getLoc(), initialValueSize,
+                                   rewriter);
       rewriter.create<IREE::Util::ReturnOp>(globalOp.getLoc());
     }
 
@@ -162,7 +163,7 @@ struct GlobalLoadOpExpansion
     // Only apply to expanded types (tensors/etc).
     if (!isExpandedType(loadOp.getType()))
       return failure();
-    auto &expandedGlobal = expansionState->globalMap[adaptor.getGlobal()];
+    auto &expandedGlobal = this->expansionState->globalMap[adaptor.getGlobal()];
 
     // Insert a load/transfer to the unknown resource lifetime.
     auto unknownType = IREE::Stream::ResourceType::get(rewriter.getContext());
@@ -227,6 +228,10 @@ void populateUtilToStreamConversionPatterns(MLIRContext *context,
   patterns
       .insert<GlobalOpExpansion, GlobalLoadOpExpansion, GlobalStoreOpExpansion>(
           expansionState, typeConverter, context);
+  patterns.add<GenericConvertTypesPattern<IREE::Util::GlobalOp>,
+               GenericConvertTypesPattern<IREE::Util::GlobalLoadOp>,
+               GenericConvertTypesPattern<IREE::Util::GlobalStoreOp>>(
+      typeConverter, context);
 }
 
 void populateUtilToStreamConversionPatterns(MLIRContext *context,

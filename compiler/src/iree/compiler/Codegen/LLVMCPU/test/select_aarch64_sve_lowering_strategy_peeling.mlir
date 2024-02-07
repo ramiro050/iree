@@ -1,5 +1,6 @@
 // RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-llvmcpu-select-lowering-strategy)))' \
-// RUN: --iree-llvmcpu-vector-pproc-strategy=peel --split-input-file %s | FileCheck %s
+// RUN:   --iree-llvmcpu-enable-scalable-vectorization=true --iree-llvmcpu-vector-pproc-strategy=peel \
+// RUN:   --split-input-file %s | FileCheck %s
 
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
   #hal.descriptor_set.layout<0, bindings = [

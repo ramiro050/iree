@@ -296,6 +296,22 @@ def Util_GlobalOpInterface : OpInterface<"GlobalOpInterface"> {
         }
       }]
     >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Creates an operation loading the value of the global.
+      }],
+      /*retTy=*/"IREE::Util::GlobalLoadOpInterface",
+      /*methodName=*/"createLoadOp",
+      /*args=*/(ins "Location":$loc, "OpBuilder &":$builder)
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Creates an operation storing the value of the global.
+      }],
+      /*retTy=*/"IREE::Util::GlobalStoreOpInterface",
+      /*methodName=*/"createStoreOp",
+      /*args=*/(ins "Location":$loc, "Value":$value, "OpBuilder &":$builder)
+    >,
   ];
 
   let verify = [{
@@ -349,6 +365,35 @@ def Util_GlobalAddressOpInterface : Util_GlobalAccessorOpInterface<"GlobalAddres
         return $_op->getResult(0);
       }]
     >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Returns true if the global whose address is taken is immutable outside
+        of initializers.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isGlobalImmutable",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return $_op.getIsImmutable();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Sets whether the global is immutable outside of initializers.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"setGlobalImmutable",
+      /*args=*/(ins "bool":$value),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        if (value) {
+          $_op.setIsImmutableAttr(UnitAttr::get($_op.getContext()));
+        } else {
+          $_op.removeIsImmutableAttr();
+        }
+      }]
+    >,
   ];
 }
 
@@ -386,6 +431,34 @@ def Util_GlobalLoadOpInterface : Util_GlobalAccessorOpInterface<"GlobalLoadOpInt
         return $_op->getResult(0);
       }]
     >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Returns true if the global loaded is immutable outside of initializers.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isGlobalImmutable",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return $_op.getIsImmutable();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Sets whether the global is immutable outside of initializers.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"setGlobalImmutable",
+      /*args=*/(ins "bool":$value),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        if (value) {
+          $_op.setIsImmutableAttr(UnitAttr::get($_op.getContext()));
+        } else {
+          $_op.removeIsImmutableAttr();
+        }
+      }]
+    >,
   ];
 }
 
@@ -421,6 +494,18 @@ def Util_GlobalStoreOpInterface : Util_GlobalAccessorOpInterface<"GlobalStoreOpI
       /*methodBody=*/[{}],
       /*defaultImplementation=*/[{
         return $_op.getValue();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Sets the value stored by the operation.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"setStoredGlobalValue",
+      /*args=*/(ins "Value":$value),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return $_op.getValueMutable().assign(value);
       }]
     >,
   ];
@@ -483,6 +568,18 @@ def Util_GlobalStoreIndirectOpInterface : Util_GlobalIndirectAccessorOpInterface
       /*methodBody=*/[{}],
       /*defaultImplementation=*/[{
         return $_op.getValue();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Sets the value stored by the operation.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"setStoredGlobalValue",
+      /*args=*/(ins "Value":$value),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return $_op.getValueMutable().assign(value);
       }]
     >,
   ];
@@ -1016,8 +1113,71 @@ def Util_GlobalType : TypeInterface<"GlobalTypeInterface"> {
 }
 
 //===----------------------------------------------------------------------===//
-// IREE::Util::HoistableTypeInterface
+// IREE::Util::Hoistable*Interface
 //===----------------------------------------------------------------------===//
+
+def Util_HoistableOpInterface : OpInterface<"HoistableOpInterface"> {
+  let cppNamespace = "::mlir::iree_compiler::IREE::Util";
+
+  let description = [{
+    Interface used to control hoisting of ops into globals.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/[{
+        Returns true if this op is valid to hoist as a transient value in the
+        global initializer.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isHoistableOp",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return true;
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Returns true if this op is valid to hoist as a leaf value in the
+        global initializer.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isHoistableLeafOp",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return true;
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Returns true if this op is should be treated as atomic from the
+        perspective of the hoisting analysis. This causes all nested ops to
+        share hoistability with this op.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isAtomicallyHoistableOp",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return false;
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Returns true if the operand for this op is hoistable.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isOperandHoistable",
+      /*args=*/(ins "OpOperand *":$operand),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return true;
+      }]
+    >,
+  ];
+}
 
 def Util_HoistableType : TypeInterface<"HoistableTypeInterface"> {
   let cppNamespace = "::mlir::iree_compiler::IREE::Util";

@@ -772,7 +772,6 @@ def Util_GlobalOp : Util_Op<"global", [
     custom<TypeOrAttr>($type, $initial_value)
   }];
 
-  let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins
       "StringRef":$name,
@@ -789,6 +788,11 @@ def Util_GlobalOp : Util_Op<"global", [
     )>,
   ];
 
+  let extraClassDeclaration = [{
+    IREE::Util::GlobalLoadOpInterface createLoadOp(Location loc, OpBuilder &builder);
+    IREE::Util::GlobalStoreOpInterface createStoreOp(Location loc, Value value, OpBuilder &builder);
+  }];
+
   let hasCanonicalizer = 1;
 }
 
@@ -804,13 +808,15 @@ def Util_GlobalAddressOp : Util_PureOp<"global.address", [
   }];
 
   let arguments = (ins
-    Util_GlobalRefAttr:$global
+    Util_GlobalRefAttr:$global,
+    UnitAttr:$is_immutable
   );
   let results = (outs
     Util_AnyGlobalPtr:$result
   );
 
   let assemblyFormat = [{
+    (`immutable` $is_immutable^)?
     $global attr-dict `:` qualified(type($result))
   }];
 
@@ -834,13 +840,15 @@ def Util_GlobalLoadOp : Util_Op<"global.load", [
   }];
 
   let arguments = (ins
-    Arg<Util_GlobalRefAttr, "", []>:$global
+    Arg<Util_GlobalRefAttr, "", []>:$global,
+    UnitAttr:$is_immutable
   );
   let results = (outs
     AnyType:$result
   );
 
   let assemblyFormat = [{
+    (`immutable` $is_immutable^)?
     $global attr-dict `:` type($result)
   }];
 
@@ -867,13 +875,15 @@ def Util_GlobalLoadIndirectOp : Util_Op<"global.load.indirect", [
   }];
 
   let arguments = (ins
-    Arg<Util_AnyGlobalPtr, "", []>:$global
+    Arg<Util_AnyGlobalPtr, "", []>:$global,
+    UnitAttr:$is_immutable
   );
   let results = (outs
     AnyType:$result
   );
 
   let assemblyFormat = [{
+    (`immutable` $is_immutable^)?
     $global attr-dict `:` qualified(type($global)) `->` type($result)
   }];
 
