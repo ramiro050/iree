@@ -55,6 +55,7 @@ iree_cc_library(
   DEPS
     ::XnnpackOpsGen
     ::defs
+    MLIRBytecodeOpInterface
     MLIRIR
   PUBLIC
 )

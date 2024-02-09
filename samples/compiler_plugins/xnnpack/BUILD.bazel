@@ -69,6 +69,7 @@ cc_library(
     deps = [
         ":XnnpackOpsGen",
         ":defs",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
     ],
 )

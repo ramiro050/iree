@@ -176,15 +176,6 @@ class ConvertFullyConnectedLayer
           "or f32 output");
     }
 
-    if (info.needsTranspose) {
-      int64_t kernelRank = kernelType.getRank();
-      SmallVector<int64_t> perm(llvm::to_vector(llvm::seq(kernelRank)));
-      std::swap(perm[perm.size() - 1], perm[perm.size() - 2]);
-      info.kernel = rewriter.create<stablehlo::TransposeOp>(
-          op.getLoc(), info.kernel, perm);
-      kernelType = info.kernel.getType().cast<RankedTensorType>();
-    }
-
     auto offsetType = RankedTensorType::get(kernelType.getShape(),
                                             rewriter.getIntegerType(8));
     int8_t offsetInt = 8;
@@ -195,8 +186,10 @@ class ConvertFullyConnectedLayer
     info.kernel =
         rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
+    auto kernelNeedsTranspose =
+        BoolAttr::get(op.getContext(), info.needsTranspose);
     rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        op, outputType, info.input, info.kernel);
+        op, outputType, info.input, info.kernel, kernelNeedsTranspose);
     return success();
   }
 

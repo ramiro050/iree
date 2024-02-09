@@ -23,5 +23,6 @@ Pattern {
   CheckInnermostReduction(dot_general);
   CheckF32RankedTensorType(cvt_i32_f32);
 
-  replace cvt_i32_f32 with op<xnnpack.fully_connected_nc_qd8_f32_qc4w>(i8_input, i4_input);
+  replace cvt_i32_f32 with op<xnnpack.fully_connected_nc_qd8_f32_qc4w>(i8_input, i4_input)
+      { kernel_needs_transpose = attr<"false"> };
 }
