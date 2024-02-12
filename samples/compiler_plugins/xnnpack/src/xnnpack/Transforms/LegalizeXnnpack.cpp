@@ -105,9 +105,8 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
     // `kernel` tensor when no transpose is needed for the `kernel` tensor, and
     // a reduction along the inner dimension otherwise.
     SmallVector<Value> outputDims(inputDims.drop_back(1));
-    outputDims.push_back(fullyConnected.getKernelNeedsTranspose()
-                             ? kernelDims[1]
-                             : kernelDims[0]);
+    outputDims.push_back(fullyConnected.getTransposeRhs() ? kernelDims[1]
+                                                          : kernelDims[0]);
     dims.push_back(outputDims);
   } else {
     llvm_unreachable("not an xnnpack op!");

@@ -45,11 +45,11 @@ def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f3
   let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
   let arguments = (ins AnyRankedTensor:$input,
                        AnyRankedTensor:$kernel,
-                       BoolAttr:$kernel_needs_transpose);
+                       BoolAttr:$transpose_rhs);
   let results = (outs AnyRankedTensor:$result);
 
   let assemblyFormat = [{
-    $input `,` $kernel `kernel_needs_transpose` `=` $kernel_needs_transpose attr-dict `:` functional-type(operands, results)
+    $input `,` $kernel `transpose_rhs` `=` $transpose_rhs attr-dict `:` functional-type(operands, results)
   }];
 }
 

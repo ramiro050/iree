@@ -6,7 +6,7 @@
 // CHECK:           %[[C8:.*]] = stablehlo.constant dense<8>
 // CHECK:           %[[C8_I4:.*]] = stablehlo.convert %[[C8]] : (tensor<{{.*}}i8>) -> tensor<{{.*}}i4>
 // CHECK:           %[[RHS_UI4:.*]] = stablehlo.xor %[[RHS]], %[[C8_I4]]
-// CHECK:           %{{.*}} = xnnpack.fully_connected_nc_qd8_f32_qc4w %[[LHS]], %[[RHS_UI4]] kernel_needs_transpose = false : (tensor<1x100x200xi8>, tensor<300x200xi4>) -> tensor<1x100x300xf32>
+// CHECK:           %{{.*}} = xnnpack.fully_connected_nc_qd8_f32_qc4w %[[LHS]], %[[RHS_UI4]] transpose_rhs = false : (tensor<1x100x200xi8>, tensor<300x200xi4>) -> tensor<1x100x300xf32>
 func.func @fully_connected(%input : tensor<1x100x200xi8>, %kernel : tensor<300x200xi4>) -> tensor<1x100x300xf32> {
   %kernel_cast = stablehlo.convert %kernel : (tensor<300x200xi4>) -> tensor<300x200xi8>
   %dot_general = stablehlo.dot_general %input, %kernel_cast, contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<1x100x200xi8>, tensor<300x200xi8>) -> tensor<1x100x300xi32>
@@ -20,7 +20,7 @@ func.func @fully_connected(%input : tensor<1x100x200xi8>, %kernel : tensor<300x2
 // CHECK:           %[[C8:.*]] = stablehlo.constant dense<8>
 // CHECK:           %[[C8_I4:.*]] = stablehlo.convert %[[C8]] : (tensor<{{.*}}xi8>) -> tensor<{{.*}}xi4>
 // CHECK:           %[[RHS_UI4:.*]] = stablehlo.xor %[[RHS]], %[[C8_I4]]
-// CHECK:           %{{.*}} = xnnpack.fully_connected_nc_qd8_f32_qc4w %[[LHS]], %[[RHS_UI4]] kernel_needs_transpose = true : (tensor<1x100x200xi8>, tensor<200x300xi4>) -> tensor<1x100x300xf32>
+// CHECK:           %{{.*}} = xnnpack.fully_connected_nc_qd8_f32_qc4w %[[LHS]], %[[RHS_UI4]] transpose_rhs = true : (tensor<1x100x200xi8>, tensor<200x300xi4>) -> tensor<1x100x300xf32>
 func.func @fully_connected$transpose(%input : tensor<1x100x200xi8>, %kernel : tensor<200x300xi4>) -> tensor<1x100x300xf32> {
   %kernel_cast = stablehlo.convert %kernel : (tensor<200x300xi4>) -> tensor<200x300xi8>
   %dot_general = stablehlo.dot_general %input, %kernel_cast, contracting_dims = [2] x [0], precision = [DEFAULT, DEFAULT] : (tensor<1x100x200xi8>, tensor<200x300xi8>) -> tensor<1x100x300xi32>

@@ -73,7 +73,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     size_t binding2_size0;
     size_t binding2_size1;
     size_t binding2_size2;
-    int8_t needs_transpose;
+    int8_t transpose_rhs;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
 
@@ -84,14 +84,14 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   assert(params->binding0_size0 == 1 && "unsupported input size");
   size_t input_reduction_dim_size = params->binding0_size2;
   size_t kernel_reduction_dim_size =
-      params->needs_transpose ? params->binding1_size0 : params->binding1_size1;
+      params->transpose_rhs ? params->binding1_size0 : params->binding1_size1;
   assert(input_reduction_dim_size == kernel_reduction_dim_size &&
          "reduction dimensions are not the same size");
 
   const size_t batch_size = params->binding0_size1;
   const size_t input_channels = params->binding0_size2;
   const size_t output_channels =
-      params->needs_transpose ? params->binding1_size1 : params->binding1_size0;
+      params->transpose_rhs ? params->binding1_size1 : params->binding1_size0;
   assert((input_channels & 1) == 0 && "`input_channels` must be even");
   // TODO: XNNPACK expects this value to be 8. From testing, this value is
   // subtracted from the kernel before using it in the matrix multiplication.
@@ -114,7 +114,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   for (size_t i = 0; i < output_channels; i++) kernel_scale[i] = 1;
 
   xnn_operator_t fc_op = NULL;
-  uint32_t flags = params->needs_transpose ? XNN_FLAG_TRANSPOSE_WEIGHTS : 0;
+  uint32_t flags = params->transpose_rhs ? XNN_FLAG_TRANSPOSE_WEIGHTS : 0;
   status = xnn_create_fully_connected_nc_qd8_f32_qc4w(
       input_channels, output_channels, /*input_stride=*/input_channels,
       /*output_stride=*/output_channels, kernel_zero_point, kernel_scale,
