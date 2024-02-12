@@ -98,10 +98,16 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
     if (kernelType.getRank() != 2) {
       return op->emitError("unimplemented: kernel of rank != 2");
     }
-    // Fully connected performs a reduction along the right-most dimension of
-    // the input and the kernel.
-    // output shape = [input.dim(0), input.dim(1), kernel.dim(0)]
-    dims.push_back({dims[0][0], dims[0][1], dims[1][0]});
+
+    ArrayRef<Value> inputDims(dims[0]);
+    ArrayRef<Value> kernelDims(dims[1]);
+    // Fully connected performs a reduction along the outer dimension of the
+    // `kernel` tensor when no transpose is needed for the `kernel` tensor, and
+    // a reduction along the inner dimension otherwise.
+    SmallVector<Value> outputDims(inputDims.drop_back(1));
+    outputDims.push_back(fullyConnected.getTransposeRhs() ? kernelDims[1]
+                                                          : kernelDims[0]);
+    dims.push_back(outputDims);
   } else {
     llvm_unreachable("not an xnnpack op!");
   }
@@ -151,6 +157,17 @@ static FailureOr<func::FuncOp> createUKernelGeneric(
 
           SmallVector<Value> otherOperands;
           for (auto dims : maybeDims.value()) otherOperands.append(dims);
+          for (auto attr : op->getAttrs()) {
+            if (auto boolAttr = dyn_cast<BoolAttr>(attr.getValue())) {
+              Value boolVal = rewriter.create<arith::ConstantIntOp>(
+                  loc, boolAttr.getValue(), 8);
+              otherOperands.push_back(boolVal);
+            } else {
+              return op->emitError()
+                     << "unimplemented: handling of attribute with value '"
+                     << attr.getValue() << "'";
+            }
+          }
 
           auto ukernel =
               rewriter

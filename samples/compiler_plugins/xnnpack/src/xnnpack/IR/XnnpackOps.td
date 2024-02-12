@@ -44,11 +44,12 @@ def Xnnpack_BatchMatrixMultiplyOp : Xnnpack_Op<"batch_matrix_multiply", []> {
 def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w", []> {
   let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
   let arguments = (ins AnyRankedTensor:$input,
-                       AnyRankedTensor:$kernel);
+                       AnyRankedTensor:$kernel,
+                       BoolAttr:$transpose_rhs);
   let results = (outs AnyRankedTensor:$result);
 
   let assemblyFormat = [{
-    $input `,` $kernel attr-dict `:` functional-type(operands, results)
+    $input `,` $kernel `transpose_rhs` `=` $transpose_rhs attr-dict `:` functional-type(operands, results)
   }];
 }
 

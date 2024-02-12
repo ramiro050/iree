@@ -176,15 +176,6 @@ class ConvertFullyConnectedLayer
           "or f32 output");
     }
 
-    if (info.needsTranspose) {
-      int64_t kernelRank = kernelType.getRank();
-      SmallVector<int64_t> perm(llvm::to_vector(llvm::seq(kernelRank)));
-      std::swap(perm[perm.size() - 1], perm[perm.size() - 2]);
-      info.kernel = rewriter.create<stablehlo::TransposeOp>(
-          op.getLoc(), info.kernel, perm);
-      kernelType = info.kernel.getType().cast<RankedTensorType>();
-    }
-
     auto offsetType = RankedTensorType::get(kernelType.getShape(),
                                             rewriter.getIntegerType(8));
     int8_t offsetInt = 8;
@@ -195,8 +186,9 @@ class ConvertFullyConnectedLayer
     info.kernel =
         rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
+    auto transposeRhs = BoolAttr::get(op.getContext(), info.transposeRhs);
     rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        op, outputType, info.input, info.kernel);
+        op, outputType, info.input, info.kernel, transposeRhs);
     return success();
   }
 
@@ -210,14 +202,14 @@ class ConvertFullyConnectedLayer
   // the reduction along the first non-batch dimension of the kernel
   // (regular batch matrix multiplication), we need to transpose the last two
   // dimensions of the kernel tensor before computing the fully connected layer.
-  // The `needsTranspose` variable is true if such a tranpose of the kernel is
+  // The `transposeRhs` variable is true if such a tranpose of the kernel is
   // needed.
   struct FullyConnectedInfo {
     Value input;
     Value kernel;
     Value output;
-    bool needsTranspose;  // Kernel needs transpose before reduction `input_ij
-                          // kernel_kj`
+    bool transposeRhs;  // Kernel needs transpose before reduction `input_ij
+                        // kernel_kj`
   };
 
   // Get the `stablehlo.dot_general`'s inputs before any casts and its output
@@ -257,7 +249,7 @@ class ConvertFullyConnectedLayer
     info.input = getUnconvertedValue(lhs);
     info.kernel = getUnconvertedValue(rhs);
     info.output = getConvertedValue(op.getResult());
-    info.needsTranspose = rhsContractingDim - rhsBatchDimsCount == 0;
+    info.transposeRhs = rhsContractingDim - rhsBatchDimsCount == 0;
 
     auto inputType = info.input.getType().cast<RankedTensorType>();
     auto kernelType = info.kernel.getType().cast<RankedTensorType>();

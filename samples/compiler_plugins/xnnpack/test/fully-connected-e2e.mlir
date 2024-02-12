@@ -20,6 +20,6 @@ func.func @main(%input : tensor<1x2x8xi8>, %kernel : tensor<4x8xi8>) -> tensor<1
   %c8 = stablehlo.constant dense<8> : tensor<4x8xi8>
   %kernel_adjusted = stablehlo.xor %kernel, %c8 : (tensor<4x8xi8>, tensor<4x8xi8>) -> tensor<4x8xi8>
   %kernel_i4 = stablehlo.convert %kernel_adjusted : (tensor<4x8xi8>) -> tensor<4x8xi4>
-  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %input, %kernel_i4 : (tensor<1x2x8xi8>, tensor<4x8xi4>) -> tensor<1x2x4xf32>
+  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %input, %kernel_i4 transpose_rhs = false : (tensor<1x2x8xi8>, tensor<4x8xi4>) -> tensor<1x2x4xf32>
   func.return %c : tensor<1x2x4xf32>
 }
