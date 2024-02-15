@@ -12,6 +12,7 @@
 #include "iree/compiler/Codegen/LLVMCPU/Passes.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Conversion/ArithToArmSME/ArithToArmSME.h"
 #include "mlir/Conversion/ArmSMEToLLVM/ArmSMEToLLVM.h"
 #include "mlir/Conversion/ArmSMEToSCF/ArmSMEToSCF.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
@@ -301,6 +302,10 @@ void buildLLVMCPUVectorLoweringPipeline(
   passManager.addNestedPass<func::FuncOp>(
       createLLVMCPUVectorTransposeLoweringPass(
           options.lowerVectorTransposeToAVX2));
+
+  // Potentially removes shape_cast and broadcast on unit dims before shape_cast
+  // lowering.
+  passManager.addNestedPass<func::FuncOp>(createCanonicalizerPass());
 
   // 'vector.shape_cast' are very expensive operations that are even generated
   // by some of the lowerings above (e.g., transpose lowering). There are
@@ -632,7 +637,9 @@ static void addLowerToLLVMPasses(OpPassManager &passManager,
   }
 
   if (enableAArch64SME) {
-    // Lower vector operations to Arm SME operations.
+    // (Arith, Vector) -> ArmSME
+    passManager.addNestedPass<func::FuncOp>(
+        mlir::createArithToArmSMEConversionPass());
     passManager.addNestedPass<func::FuncOp>(
         mlir::createConvertVectorToArmSMEPass());
     passManager.addNestedPass<func::FuncOp>(

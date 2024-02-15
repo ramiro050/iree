@@ -4,12 +4,16 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "./ROCMTargetFeatures.h"
 #include "./ROCMTargetUtils.h"
 
 #include <cstdint>
 #include <mutex>
 
+#include "compiler/plugins/target/ROCM/ROCMTargetFeatures.h"
+#include "iree-dialects/Dialect/VectorExt/IR/VectorExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
+#include "iree/compiler/Codegen/Dialect/GPU/IR/IREEGPUDialect.h"
 #include "iree/compiler/Codegen/LLVMGPU/Passes.h"
 #include "iree/compiler/Dialect/HAL/Target/LLVMLinkerUtils.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
@@ -139,6 +143,8 @@ public:
     mlir::registerLLVMDialectTranslation(registry);
     mlir::registerROCDLDialectTranslation(registry);
     registry.insert<IREE::Codegen::IREECodegenDialect>();
+    registry.insert<IREE::VectorExt::IREEVectorExtDialect>();
+    registry.insert<IREE::GPU::IREEGPUDialect>();
     registry.insert<amdgpu::AMDGPUDialect>();
   }
 
@@ -171,7 +177,7 @@ public:
     fam.registerPass([&] { return targetMachine.getTargetIRAnalysis(); });
 
     llvm::PipelineTuningOptions pto;
-    pto.SLPVectorization = false;
+    pto.SLPVectorization = true;
 
     llvm::PassInstrumentationCallbacks pic;
 
@@ -399,9 +405,8 @@ public:
                      variantOp.getName(), ".hsaco", targetHSACO);
     }
 
-    auto hsacoRef = flatbuffers_uint8_vec_create(
-        builder, reinterpret_cast<const uint8_t *>(targetHSACO.c_str()),
-        targetHSACO.size());
+    auto hsacoRef = flatbuffers_string_create(builder, targetHSACO.c_str(),
+                                              targetHSACO.size());
 
     auto entryPointNames = llvm::map_to_vector<8>(
         variantOp.getBlock()
@@ -463,6 +468,11 @@ private:
     addConfig("target_arch", StringAttr::get(context, options.targetChip));
 
     addConfig("ukernels", StringAttr::get(context, options.enableROCMUkernels));
+
+    ArrayAttr mmaAttrs = getROCMSupportedMmaAttrs(context, options.targetChip);
+    if (mmaAttrs) {
+      addConfig("mma_intrinsics", mmaAttrs);
+    }
 
     auto configAttr = b.getDictionaryAttr(configItems);
     return IREE::HAL::ExecutableTargetAttr::get(

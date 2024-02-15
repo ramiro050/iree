@@ -14,6 +14,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "amdgpu_chained_matmul.mlir"
     "amdgpu_contraction_distribution.mlir"
     "attention.mlir"
     "cast_address_space_function.mlir"
@@ -58,6 +59,8 @@ iree_lit_test_suite(
     "transform_vector_to_mma.mlir"
     "transpose_pipeline_test.mlir"
     "ukernel_pipeline_transform.mlir"
+    "vector_distribute.mlir"
+    "vector_distribution_pipeline_rocm.mlir"
     "vector_lowering.mlir"
     "vector_to_gpu.mlir"
     "workgroup_specialization_pipeline_test.mlir"

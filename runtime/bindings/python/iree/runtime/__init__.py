@@ -30,6 +30,7 @@ from ._binding import (
     HalBufferView,
     HalCommandBuffer,
     HalDevice,
+    HalDeviceLoopBridge,
     HalDriver,
     HalElementType,
     HalFence,
@@ -51,6 +52,7 @@ from ._binding import (
     VmInstance,
     VmContext,
     VmModule,
+    VmRef,
 )
 
 from .array_interop import *

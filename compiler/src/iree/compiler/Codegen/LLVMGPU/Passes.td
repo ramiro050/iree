@@ -13,6 +13,12 @@ include "mlir/Pass/PassBase.td"
 // LLVMGPU Passes (keep alphabetical)
 //------------------------------------------------------------------------------
 
+def AMDGPUPrepareForChainedMatmul :
+    InterfacePass<"iree-amdgpu-prepare-chained-matmul", "mlir::FunctionOpInterface"> {
+  let summary = "Pass to swap operands and transpose accumulator and result";
+  let constructor = "mlir::iree_compiler::createAMDGPUPrepareForChainedMatmulPass()";
+}
+
 // TODO: Bring the argument in line with the names used elsewhere.
 def ConvertToNVVM :
     Pass<"iree-convert-to-nvvm", "ModuleOp"> {
@@ -81,6 +87,12 @@ def LLVMGPUTileAndDistribute :
     InterfacePass<"iree-llvmgpu-tile-and-distribute", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile and distribute linalg ops within a workgroup.";
   let constructor = "mlir::iree_compiler::createLLVMGPUTileAndDistribute()";
+}
+
+def LLVMGPUVectorDistribute :
+    InterfacePass<"iree-llvmgpu-vector-distribute", "mlir::FunctionOpInterface"> {
+  let summary = "Pass to distribute vectorized functions.";
+  let constructor = "mlir::iree_compiler::createLLVMGPUVectorDistribute()";
 }
 
 def LLVMGPUVectorLowering :

@@ -4,11 +4,16 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <numeric>
+
 #include "iree-dialects/Dialect/VectorExt/IR/VectorExtDialect.h"
 #include "iree-dialects/Dialect/VectorExt/IR/VectorExtOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include <numeric>
 
 using namespace mlir;
 
@@ -30,7 +35,7 @@ std::optional<int64_t> PerDimLayoutAttr::getShape(const LayoutDimension &dim) {
   return std::nullopt;
 }
 
-std::optional<int64_t> LayoutAttr::getShape(const LayoutDimension &dim) {
+std::optional<int64_t> LayoutAttr::getShape(const LayoutDimension &dim) const {
   for (PerDimLayoutAttr layout : getLayouts()) {
     std::optional<int64_t> maybeShape = layout.getShape(dim);
     if (maybeShape)
@@ -193,6 +198,107 @@ uint64_t LayoutAttr::getShuffleOffset(int64_t reductionDim) {
     break;
   }
   return offset;
+}
+
+bool LayoutAttr::hasLaneConflictWith(const LayoutAttr &other) {
+  SmallVector<LayoutDimension> laneDims{
+      LayoutDimension::LANEX, LayoutDimension::LANEY, LayoutDimension::LANEZ};
+  for (LayoutDimension dim : laneDims) {
+    std::optional<int64_t> shape = getShape(dim);
+    std::optional<int64_t> otherShape = other.getShape(dim);
+    if ((shape && !otherShape) || (!shape && otherShape))
+      return true;
+    if (shape && otherShape) {
+      if (shape.value() != otherShape.value())
+        return true;
+    }
+  }
+  return false;
+}
+
+VectorLayoutInterface
+NestedLayoutAttr::project(ArrayRef<bool> projectedDims) const {
+  llvm_unreachable("Not yet implemented");
+}
+
+VectorLayoutInterface
+NestedLayoutAttr::permute(ArrayRef<int64_t> permutation) const {
+  llvm_unreachable("Not yet implemented");
+}
+
+/// We distribute to:
+/// <BATCH x OUTER x ELEMENT>
+SmallVector<int64_t> NestedLayoutAttr::getDistributedShape() const {
+  SmallVector<int64_t> shape;
+  shape.append(applyPermutation(getBatchesPerSubgroup(), getBatchOrder()));
+  shape.append(applyPermutation(getOutersPerBatch(), getOuterOrder()));
+  shape.append(applyPermutation(getElementsPerThread(), getElementOrder()));
+  return shape;
+}
+
+bool NestedLayoutAttr::isValidLayout(ArrayRef<int64_t> shape) const {
+  // Multiply all shapes in the layout.
+  for (int i = 0, e = shape.size(); i < e; ++i) {
+    int64_t expectedShape = getSubgroupsPerWorkgroup()[i] *
+                            getBatchesPerSubgroup()[i] *
+                            getOutersPerBatch()[i] * getThreadsPerOuter()[i] *
+                            getElementsPerThread()[i];
+    if (expectedShape != shape[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// TODO: These things should ideally go into the parser when we have a custom
+// parser.
+LogicalResult NestedLayoutAttr::verify(
+    llvm::function_ref<InFlightDiagnostic()> emitError,
+    ArrayRef<int64_t> subgroupsPerWorkgroup, ArrayRef<int64_t> subgroupOrder,
+    ArrayRef<int64_t> batchesPerSubgroup, ArrayRef<int64_t> batchOrder,
+    ArrayRef<int64_t> outersPerBatch, ArrayRef<int64_t> outerOrder,
+    ArrayRef<int64_t> threadsPerOuter, ArrayRef<int64_t> threadOrder,
+    ArrayRef<int64_t> elementsPerThread, ArrayRef<int64_t> elementOrder) {
+
+  size_t rank = subgroupsPerWorkgroup.size();
+  auto checkTile = [&](ArrayRef<int64_t> tileShape, ArrayRef<int64_t> order) {
+    if (tileShape.size() != rank || order.size() != rank) {
+      emitError() << "all tiles must have the same rank as the layout";
+      return failure();
+    }
+    if (!mlir::isPermutationVector(order)) {
+      emitError() << "all orderings must be permutation vectors";
+      return failure();
+    }
+    return success();
+  };
+
+  if (failed(checkTile(subgroupsPerWorkgroup, subgroupOrder)) ||
+      failed(checkTile(batchesPerSubgroup, batchOrder)) ||
+      failed(checkTile(outersPerBatch, outerOrder)) ||
+      failed(checkTile(threadsPerOuter, threadOrder)) ||
+      failed(checkTile(elementsPerThread, elementOrder))) {
+    return failure();
+  }
+
+  return success();
+}
+
+/// Given a single flat thread ID, compute the indices of the distributed
+/// dimensions (subgroup and thread ids).
+ValueRange NestedLayoutAttr::computeThreadIds(Value threadId,
+                                              RewriterBase &rewriter) const {
+  SmallVector<OpFoldResult> basis;
+  for (auto warpTy : getSubgroupOrder()) {
+    basis.push_back(rewriter.getIndexAttr(getSubgroupsPerWorkgroup()[warpTy]));
+  }
+  for (auto threadTy : getThreadOrder()) {
+    basis.push_back(rewriter.getIndexAttr(getThreadsPerOuter()[threadTy]));
+  }
+
+  auto delinearized = rewriter.create<mlir::affine::AffineDelinearizeIndexOp>(
+      threadId.getLoc(), threadId, basis);
+  return delinearized->getResults();
 }
 
 } // namespace mlir::iree_compiler::IREE::VectorExt

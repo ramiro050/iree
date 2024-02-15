@@ -34,6 +34,37 @@ func.func @distribute_elementwise_i32(%a: vector<16x16xi32>, %b: vector<16x16xi3
   return %d : vector<16x16xi32>
 }
 
+#nested = #iree_vector_ext.nested_layout<
+  subgroups_per_workgroup = [2, 1, 1],
+  batches_per_subgroup    = [8, 2, 4],
+  outers_per_batch        = [1, 4, 4],
+  threads_per_outer       = [8, 2, 4],
+  elements_per_thread     = [1, 8, 2],
+
+  subgroup_order          = [0, 1, 2],
+  batch_order             = [0, 1, 2],
+  outer_order             = [0, 1, 2],
+  thread_order            = [0, 1, 2],
+  element_order           = [0, 2, 1]
+>
+
+// CHECK-LABEL: @distribute_elementwise_nested_layout_f16
+func.func @distribute_elementwise_nested_layout_f16(%a: vector<128x128x128xf16>, %b: vector<128x128x128xf16>) -> vector<128x128x128xf16> {
+  %c0 = arith.constant 0 : index
+  %cst_0 = arith.constant 0.0 : f16
+  // CHECK: %[[ROOT:.*]] = arith.constant dense<0.000000e+00> : vector<8x2x4x1x4x4x1x2x8xf16>
+  %root = arith.constant {"__vector_layout_test_anchor_result_0" = #nested} dense<0.0> : vector<128x128x128xf16>
+  // CHECK-DAG: %[[B:.*]] = iree_vector_ext.to_simt %{{.*}} : vector<128x128x128xf16> -> vector<8x2x4x1x4x4x1x2x8xf16>
+  // CHECK-DAG: %[[C:.*]] = arith.mulf %[[B]], %[[ROOT]] : vector<8x2x4x1x4x4x1x2x8xf16>
+  %c = arith.mulf %root, %b : vector<128x128x128xf16>
+  // CHECK-DAG: %[[A:.*]] = iree_vector_ext.to_simt %{{.*}} : vector<128x128x128xf16> -> vector<8x2x4x1x4x4x1x2x8xf16>
+  // CHECK-DAG: %[[D:.*]] = arith.addf %[[C]], %[[A]] fastmath<reassoc,nnan> : vector<8x2x4x1x4x4x1x2x8xf16>
+  %d = arith.addf %c, %a fastmath<reassoc,nnan> : vector<128x128x128xf16>
+  // CHECK: iree_vector_ext.to_simd %[[D]] : vector<8x2x4x1x4x4x1x2x8xf16> -> vector<128x128x128xf16>
+  return %d : vector<128x128x128xf16>
+}
+
+// CHECK-LABEL: @distribute_scf_for
 func.func @distribute_scf_for(%a: vector<16x16xi32>, %b: vector<16x16xi32>) -> vector<16x16xi32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -376,10 +407,130 @@ func.func @distribute_transpose(%mem: memref<32x32xf16>, %mem1: memref<32x32xf16
   func.return %c : vector<32x16xf16>
 }
 
+#row_broadcast_layout = #iree_vector_ext.per_dim_layout<[BATCHX, LANEX], [2, 16]>
+#col_broadcast_layout = #iree_vector_ext.per_dim_layout<[BATCHY, LANEY, VECTORX], [2, 4, 4]>
+#layout_broadcast_1d = #iree_vector_ext.layout<#row_broadcast_layout>
+#layout_broadcast_2d = #iree_vector_ext.layout<#row_broadcast_layout, #col_broadcast_layout>
+#layout_broadcast_1d_t = #iree_vector_ext.layout<#col_broadcast_layout>
+#layout_broadcast_2d_t = #iree_vector_ext.layout<#col_broadcast_layout, #row_broadcast_layout>
+
+func.func @distribute_broadcast_row_col(%source: vector<32xf32>) -> vector<32x32xf32> {
+  %result = vector.broadcast %source {
+          "__vector_layout_test_anchor_operand_0" = #layout_broadcast_1d_t,
+          "__vector_layout_test_anchor_result_0" = #layout_broadcast_2d}
+          : vector<32xf32> to vector<32x32xf32>
+  // CHECK-DAG: %[[S00:.*]] = vector.extract %[[SOURCE:.*]][0, 0]
+  // CHECK-DAG: vector.insert %[[S00]], %{{.*}} [0, 0, 0]
+  // CHECK-DAG: vector.insert %[[S00]], %{{.*}} [1, 0, 0]
+  // CHECK-DAG: %[[S01:.*]] = vector.extract %[[ACC:.*]][0, 1]
+  // CHECK-DAG: vector.insert %[[S01]], %{{.*}} [0, 0, 1]
+  // CHECK-DAG: vector.insert %[[S01]], %{{.*}} [1, 0, 1]
+  // CHECK-DAG: %[[S02:.*]] = vector.extract %[[ACC:.*]][0, 2]
+  // CHECK-DAG: vector.insert %[[S02]], %{{.*}} [0, 0, 2]
+  // CHECK-DAG: vector.insert %[[S02]], %{{.*}} [1, 0, 2]
+  // CHECK-DAG: %[[S03:.*]] = vector.extract %[[ACC:.*]][0, 3]
+  // CHECK-DAG: vector.insert %[[S03]], %{{.*}} [0, 0, 3]
+  // CHECK-DAG: vector.insert %[[S03]], %{{.*}} [1, 0, 3]
+
+  // CHECK-DAG: %[[S10:.*]] = vector.extract %[[SOURCE]][1, 0]
+  // CHECK-DAG: vector.insert %[[S10]], %{{.*}} [0, 1, 0]
+  // CHECK-DAG: vector.insert %[[S10]], %{{.*}} [1, 1, 0]
+  // CHECK-DAG: %[[S11:.*]] = vector.extract %[[ACC:.*]][1, 1]
+  // CHECK-DAG: vector.insert %[[S11]], %{{.*}} [0, 1, 1]
+  // CHECK-DAG: vector.insert %[[S11]], %{{.*}} [1, 1, 1]
+  // CHECK-DAG: %[[S12:.*]] = vector.extract %[[ACC:.*]][1, 2]
+  // CHECK-DAG: vector.insert %[[S12]], %{{.*}} [0, 1, 2]
+  // CHECK-DAG: vector.insert %[[S12]], %{{.*}} [1, 1, 2]
+  // CHECK-DAG: %[[S13:.*]] = vector.extract %[[ACC:.*]][1, 3]
+  // CHECK-DAG: vector.insert %[[S13]], %{{.*}} [0, 1, 3]
+  // CHECK-DAG: vector.insert %[[S13]], %{{.*}} [1, 1, 3]
+  func.return %result : vector<32x32xf32>
+}
+
+func.func @distribute_broadcast_col_row(%source: vector<32xf32>) -> vector<32x32xf32> {
+  %result = vector.broadcast %source {
+          "__vector_layout_test_anchor_operand_0" = #layout_broadcast_1d,
+          "__vector_layout_test_anchor_result_0" = #layout_broadcast_2d_t}
+          : vector<32xf32> to vector<32x32xf32>
+  // CHECK-DAG: %[[S0:.*]] = vector.extract %[[SOURCE:.*]][0]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 0, 0]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 0, 1]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 0, 2]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 0, 3]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 1, 0]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 1, 1]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 1, 2]
+  // CHECK-DAG: vector.insert %[[S0]], %{{.*}} [0, 1, 3]
+
+  // CHECK-DAG: %[[S1:.*]] = vector.extract %[[SOURCE:.*]][1]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 0, 0]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 0, 1]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 0, 2]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 0, 3]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 1, 0]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 1, 1]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 1, 2]
+  // CHECK-DAG: vector.insert %[[S1]], %{{.*}} [1, 1, 3]
+  func.return %result : vector<32x32xf32>
+}
+
 builtin.module attributes { transform.with_named_sequence } {
   transform.named_sequence @__transform_main(%variant_op: !transform.any_op {transform.readonly}) {
     %top_level_func = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     transform.iree.test_gpu_vector_distribution %top_level_func : !transform.any_op
+    transform.yield
+  }
+}
+
+// -----
+
+#row_layout = #iree_vector_ext.per_dim_layout<[BATCHX, LANEY, VECTORX], [2, 4, 4]>
+#col_layout = #iree_vector_ext.per_dim_layout<[BATCHY, LANEX], [1, 16]>
+#layout0 = #iree_vector_ext.layout<#row_layout, #col_layout>
+#row_layout2 = #iree_vector_ext.per_dim_layout<[BATCHX, LANEY, VECTORX], [1, 4, 8]>
+#layout1 = #iree_vector_ext.layout<#row_layout2, #col_layout>
+#row_layout3 = #iree_vector_ext.per_dim_layout<[BATCHX, LANEY, VECTORX], [4, 2, 4]>
+#layout2 = #iree_vector_ext.layout<#row_layout3, #col_layout>
+
+func.func @resolved_layout_conflict(%a : memref<32x16xf16>, %b : memref<32x16xf16>) {
+  // CHECK: func.func @resolved_layout_conflict(%[[MEM:.*]]: memref<32x16xf16>, %[[MEM1:.*]]: memref<32x16xf16>
+  // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<0.000000e+00> : vector<2x1x4xf16>
+  %c0 = arith.constant 0 : index
+  %cst = arith.constant 0.0 : f16
+  // CHECK-COUNT-8: vector.load %[[MEM]]
+  %vec = vector.transfer_read  %a[%c0, %c0], %cst {"__vector_layout_test_anchor_result_0" = #layout1} : memref<32x16xf16>, vector<32x16xf16>
+  // CHECK: %[[V0:.*]] = vector.insert_strided_slice {{.*}} : vector<1xf16> into vector<1x1x8xf16>
+  // CHECK: %[[R0:.*]] = vector.extract_strided_slice %[[V0]] {offsets = [0, 0, 0], sizes = [1, 1, 4], strides = [1, 1, 1]} : vector<1x1x8xf16> to vector<1x1x4xf16>
+  // CHECK: %[[R1:.*]] = vector.insert_strided_slice %[[R0]], %[[CST0]] {offsets = [0, 0, 0], strides = [1, 1, 1]} : vector<1x1x4xf16> into vector<2x1x4xf16>
+  // CHECK: %[[R2:.*]] = vector.extract_strided_slice %[[V0]] {offsets = [0, 0, 4], sizes = [1, 1, 4], strides = [1, 1, 1]} : vector<1x1x8xf16> to vector<1x1x4xf16>
+  // CHECK: %[[R3:.*]] = vector.insert_strided_slice %[[R2]], %[[R1]] {offsets = [1, 0, 0], strides = [1, 1, 1]} : vector<1x1x4xf16> into vector<2x1x4xf16>
+  // CHECK: %[[R4:.*]] = arith.addf %[[R3]], %[[R3]] : vector<2x1x4xf16>
+  %vec2 = arith.addf %vec, %vec : vector<32x16xf16>
+  // CHECK-COUNT-8: vector.store {{.*}}, vector<1xf16>
+  vector.transfer_write %vec2, %b[%c0, %c0] {in_bounds = [true, true],
+           "__vector_layout_test_anchor_operand_0" = #layout0} : vector<32x16xf16>, memref<32x16xf16>
+  func.return
+}
+
+func.func @unresolved_layout_conflict(%a : memref<32x16xf16>, %b : memref<32x16xf16>) {
+  // CHECK: func.func @unresolved_layout_conflict(%[[MEM:.*]]: memref<32x16xf16>, %[[MEM1:.*]]: memref<32x16xf16>
+  %c0 = arith.constant 0 : index
+  %cst = arith.constant 0.0 : f16
+  %vcst = arith.constant dense<0.0> : vector<32x16xf16>
+  // CHECK-COUNT-8: vector.load %[[MEM]]
+  %vec = vector.transfer_read  %a[%c0, %c0], %cst {"__vector_layout_test_anchor_result_0" = #layout1} : memref<32x16xf16>, vector<32x16xf16>
+  // CHECK: iree_vector_ext.layout_conflict_resolution {{.*}}
+  %vec2 = arith.addf %vec, %vcst : vector<32x16xf16>
+  // CHECK-COUNT-16: vector.store {{.*}}, vector<1xf16>
+  vector.transfer_write %vec2, %b[%c0, %c0] {in_bounds = [true, true],
+           "__vector_layout_test_anchor_operand_0" = #layout2} : vector<32x16xf16>, memref<32x16xf16>
+  func.return
+}
+
+builtin.module attributes { transform.with_named_sequence } {
+  transform.named_sequence @__transform_main(%variant_op: !transform.any_op {transform.readonly}) {
+    %top_level_func = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+    transform.iree.test_gpu_vector_distribution %top_level_func {experimental = true} : !transform.any_op
     transform.yield
   }
 }
