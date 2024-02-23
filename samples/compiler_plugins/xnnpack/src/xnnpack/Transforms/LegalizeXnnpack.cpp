@@ -89,11 +89,16 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
   } else if (auto fullyConnected = dyn_cast<FullyConnectedNcQd8F32Qc4wOp>(op)) {
     auto inputType =
         fullyConnected.getInput().getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> batchDims = inputType.getShape().drop_back(2);
     auto kernelType =
         fullyConnected.getKernel().getType().cast<RankedTensorType>();
-    if (inputType.getRank() != 3 && inputType.getShape()[0] != 1) {
-      return op->emitError(
-          "unimplemented: input with rank != 3 and first dimension size != 1");
+    if (inputType.getRank() > 2) {
+      for (int64_t batchDim : batchDims) {
+        if (batchDim != 1) {
+          return op->emitError(
+              "unimplemented: input with batch dimensions of size != 1");
+        }
+      }
     }
     if (kernelType.getRank() != 2) {
       return op->emitError("unimplemented: kernel of rank != 2");
@@ -105,6 +110,25 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
     // `kernel` tensor when no transpose is needed for the `kernel` tensor, and
     // a reduction along the inner dimension otherwise.
     SmallVector<Value> outputDims(inputDims.drop_back(1));
+    outputDims.push_back(fullyConnected.getTransposeRhs() ? kernelDims[1]
+                                                          : kernelDims[0]);
+    dims.push_back(outputDims);
+  } else if (auto fullyConnected =
+                 dyn_cast<FullyConnectedNcQd8F32Qc4wVecmatOp>(op)) {
+    auto inputType =
+        fullyConnected.getInput().getType().cast<RankedTensorType>();
+    auto kernelType =
+        fullyConnected.getKernel().getType().cast<RankedTensorType>();
+    if (inputType.getRank() != 2) return op->emitError("input must be rank 2");
+    if (kernelType.getRank() != 2)
+      return op->emitError("unimplemented: kernel of rank != 2");
+
+    ArrayRef<Value> inputDims(dims[0]);
+    ArrayRef<Value> kernelDims(dims[1]);
+    // Fully connected performs a reduction along the outer dimension of the
+    // `kernel` tensor when no transpose is needed for the `kernel` tensor, and
+    // a reduction along the inner dimension otherwise.
+    SmallVector<Value> outputDims{inputDims[0]};
     outputDims.push_back(fullyConnected.getTransposeRhs() ? kernelDims[1]
                                                           : kernelDims[0]);
     dims.push_back(outputDims);

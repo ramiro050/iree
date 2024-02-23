@@ -187,8 +187,15 @@ class ConvertFullyConnectedLayer
         rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
     auto transposeRhs = BoolAttr::get(op.getContext(), info.transposeRhs);
-    rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        op, outputType, info.input, info.kernel, transposeRhs);
+
+    if (inputType.getRank() == 2) {
+      rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wVecmatOp>(
+          op, outputType, info.input, info.kernel, transposeRhs);
+    } else {
+      rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
+          op, outputType, info.input, info.kernel, transposeRhs);
+    }
+
     return success();
   }
 

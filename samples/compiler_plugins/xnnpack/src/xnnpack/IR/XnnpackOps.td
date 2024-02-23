@@ -53,4 +53,17 @@ def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f3
   }];
 }
 
+// TODO: Add bias and activation parameters
+def Xnnpack_FullyConnectedNcQd8F32Qc4wVecmatOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w_vecmat", []> {
+  let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
+  let arguments = (ins AnyRankedTensor:$input,
+                       AnyRankedTensor:$kernel,
+                       BoolAttr:$transpose_rhs);
+  let results = (outs AnyRankedTensor:$result);
+
+  let assemblyFormat = [{
+    $input `,` $kernel `transpose_rhs` `=` $transpose_rhs attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif
