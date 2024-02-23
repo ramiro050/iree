@@ -91,12 +91,11 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
         fullyConnected.getInput().getType().cast<RankedTensorType>();
     auto kernelType =
         fullyConnected.getKernel().getType().cast<RankedTensorType>();
-    if (inputType.getRank() != 3 && inputType.getShape()[0] != 1) {
-      return op->emitError(
-          "unimplemented: input with rank != 3 and first dimension size != 1");
+    if (inputType.getRank() != 2) {
+      return op->emitError("input must be rank-2");
     }
     if (kernelType.getRank() != 2) {
-      return op->emitError("unimplemented: kernel of rank != 2");
+      return op->emitError("kernel must be rank-2");
     }
 
     ArrayRef<Value> inputDims(dims[0]);
@@ -104,7 +103,7 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
     // Fully connected performs a reduction along the outer dimension of the
     // `kernel` tensor when no transpose is needed for the `kernel` tensor, and
     // a reduction along the inner dimension otherwise.
-    SmallVector<Value> outputDims(inputDims.drop_back(1));
+    SmallVector<Value> outputDims{inputDims[0]};
     outputDims.push_back(fullyConnected.getTransposeRhs() ? kernelDims[1]
                                                           : kernelDims[0]);
     dims.push_back(outputDims);
