@@ -115,12 +115,13 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
 }
 
 static FailureOr<func::FuncOp> createUKernelGeneric(
-    RewriterBase &moduleRewriter, Operation *op) {
+    RewriterBase &moduleRewriter, Operation *op, int uniqueId) {
   auto funcType = FunctionType::get(op->getContext(), op->getOperandTypes(),
                                     op->getResultTypes());
   llvm::StringRef opName = op->getName().getStringRef();
   auto func = createFuncOp(
-      moduleRewriter, op->getLoc(), funcType, opName,
+      moduleRewriter, op->getLoc(), funcType,
+      (opName + "_" + std::to_string(uniqueId)).str(),
       [opName, op](RewriterBase &rewriter, Location loc,
                    ArrayRef<BlockArgument> operands,
                    ArrayRef<Type> resultTypes) -> LogicalResult {
@@ -208,12 +209,20 @@ class LegalizeXnnpackPass
     auto m = getOperation();
     auto importBuilder = OpBuilder::atBlockBegin(m.getBody());
     IRRewriter rewriter(importBuilder);
+    // IREE expects that the name of each function declaration is unique. To
+    // ensure this, the value of `unique_id` is appended to the name of the
+    // function.
+    // Code bloat is not a big concern because IREE makes an attempt at
+    // deduplicates functions.
+    // TODO: Use a map to keep track of the available functions and avoid
+    // creating a new function when the same one already exists.
+    int uniqueId = 0;
     auto result = m.walk([&](Operation *op) -> WalkResult {
       if (op->getDialect()->getNamespace() != "xnnpack")
         return WalkResult::advance();
 
       FailureOr<func::FuncOp> ukernelGeneric =
-          createUKernelGeneric(rewriter, op);
+          createUKernelGeneric(rewriter, op, uniqueId++);
       if (failed(ukernelGeneric)) return WalkResult::interrupt();
       ukernelGeneric->setPrivate();
 
