@@ -144,9 +144,8 @@ static int create_and_run_fully_connected_op(
   return 0;
 }
 
-static int fully_connected_nc_qd8_f32_qc4w_vecmat_workgroup(void* params_ptr,
-                                                            void* context,
-                                                            void* reserved) {
+static int fully_connected_nc_qd8_f32_qc4w_rank2_input_workgroup(
+    void* params_ptr, void* context, void* reserved) {
   system_plugin_t* plugin = (system_plugin_t*)context;
   typedef struct {
     const int8_t* restrict input;
@@ -203,9 +202,8 @@ static int fully_connected_nc_qd8_f32_qc4w_vecmat_workgroup(void* params_ptr,
       output_shape, params->transpose_rhs, plugin->threadpool);
 }
 
-static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
-                                                     void* context,
-                                                     void* reserved) {
+static int fully_connected_nc_qd8_f32_qc4w_rank3_input_workgroup(
+    void* params_ptr, void* context, void* reserved) {
   system_plugin_t* plugin = (system_plugin_t*)context;
   typedef struct {
     const int8_t* restrict input;
@@ -574,15 +572,18 @@ static iree_hal_executable_plugin_status_t system_plugin_resolve(
           plugin;  // passing plugin to each import call
     } else if (iree_hal_executable_plugin_strcmp(
                    symbol_name,
-                   "xnnpack.fully_connected_nc_qd8_f32_qc4w_workgroup") == 0) {
-      params->out_fn_ptrs[i] = fully_connected_nc_qd8_f32_qc4w_workgroup;
+                   "xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_"
+                   "workgroup") == 0) {
+      params->out_fn_ptrs[i] =
+          fully_connected_nc_qd8_f32_qc4w_rank3_input_workgroup;
       params->out_fn_contexts[i] =
           plugin;  // passing plugin to each import call
     } else if (iree_hal_executable_plugin_strcmp(
                    symbol_name,
-                   "xnnpack.fully_connected_nc_qd8_f32_qc4w_vecmat_"
+                   "xnnpack.fully_connected_nc_qd8_f32_qc4w_rank2_input_"
                    "workgroup") == 0) {
-      params->out_fn_ptrs[i] = fully_connected_nc_qd8_f32_qc4w_vecmat_workgroup;
+      params->out_fn_ptrs[i] =
+          fully_connected_nc_qd8_f32_qc4w_rank2_input_workgroup;
       params->out_fn_contexts[i] =
           plugin;  // passing plugin to each import call
     } else {

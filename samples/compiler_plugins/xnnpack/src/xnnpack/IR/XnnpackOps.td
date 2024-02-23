@@ -41,8 +41,8 @@ def Xnnpack_BatchMatrixMultiplyOp : Xnnpack_Op<"batch_matrix_multiply", []> {
 }
 
 // TODO: Add bias and activation parameters
-def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w", []> {
-  let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
+def Xnnpack_FullyConnectedNcQd8F32Qc4w_Rank3InputOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w_rank3_input", []> {
+  let summary = "Fully connected layer with int8 input of rank 3, int4 kernel, and f32 output";
   let arguments = (ins AnyRankedTensor:$input,
                        AnyRankedTensor:$kernel,
                        BoolAttr:$transpose_rhs);
@@ -54,8 +54,8 @@ def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f3
 }
 
 // TODO: Add bias and activation parameters
-def Xnnpack_FullyConnectedNcQd8F32Qc4wVecmatOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w_vecmat", []> {
-  let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
+def Xnnpack_FullyConnectedNcQd8F32Qc4w_Rank2InputOp : Xnnpack_Op<"fully_connected_nc_qd8_f32_qc4w_rank2_input", []> {
+  let summary = "Fully connected layer with int8 input of rank 2, int4 kernel, and f32 output";
   let arguments = (ins AnyRankedTensor:$input,
                        AnyRankedTensor:$kernel,
                        BoolAttr:$transpose_rhs);

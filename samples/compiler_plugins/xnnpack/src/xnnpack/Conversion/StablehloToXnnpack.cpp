@@ -189,11 +189,13 @@ class ConvertFullyConnectedLayer
     auto transposeRhs = BoolAttr::get(op.getContext(), info.transposeRhs);
 
     if (inputType.getRank() == 2) {
-      rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wVecmatOp>(
-          op, outputType, info.input, info.kernel, transposeRhs);
+      rewriter
+          .replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4w_Rank2InputOp>(
+              op, outputType, info.input, info.kernel, transposeRhs);
     } else {
-      rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-          op, outputType, info.input, info.kernel, transposeRhs);
+      rewriter
+          .replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4w_Rank3InputOp>(
+              op, outputType, info.input, info.kernel, transposeRhs);
     }
 
     return success();

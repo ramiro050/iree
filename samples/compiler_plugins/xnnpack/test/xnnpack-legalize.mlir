@@ -43,12 +43,12 @@ func.func @batch_matrix_multiply(%a : tensor<?x?x?xf32>, %b : tensor<?x?x?xf32>)
 
 // -----
 
-// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w_0(
+// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_0(
 // CHECK-SAME:                                                               %[[A:.*]]: tensor<1x?x?xi8>,
 // CHECK-SAME:                                                               %[[B:.*]]: tensor<?x?xi4>) -> tensor<1x?x?xf32> {
 // CHECK:           %[[OUT:.*]] = tensor.empty(%[[A_DIM_1:.*]], %[[B_DIM_0:.*]]) : tensor<1x?x?xf32>
 // CHECK:           %[[RESULT:.*]] = flow.dispatch.region -> (tensor<1x?x?xf32>{%[[A_DIM_1]], %[[B_DIM_0]]}) {
-// CHECK:             %[[UKERNEL:.*]] = iree_codegen.ukernel.generic "xnnpack.fully_connected_nc_qd8_f32_qc4w_workgroup" ins(%[[A]], %[[B]] : tensor<1x?x?xi8>, tensor<?x?xi4>) outs(%[[OUT]] : tensor<1x?x?xf32>) (%[[A_DIM_0:.*]], %[[A_DIM_1]], %[[A_DIM_2:.*]], %[[B_DIM_0]], %[[B_DIM_1:.*]], %[[A_DIM_0]], %[[A_DIM_1]], %[[B_DIM_0]], %[[TRANSPOSE_RHS:.*]] : index, index, index, index, index, index, index, index, i8) -> tensor<1x?x?xf32>
+// CHECK:             %[[UKERNEL:.*]] = iree_codegen.ukernel.generic "xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_workgroup" ins(%[[A]], %[[B]] : tensor<1x?x?xi8>, tensor<?x?xi4>) outs(%[[OUT]] : tensor<1x?x?xf32>) (%[[A_DIM_0:.*]], %[[A_DIM_1]], %[[A_DIM_2:.*]], %[[B_DIM_0]], %[[B_DIM_1:.*]], %[[A_DIM_0]], %[[A_DIM_1]], %[[B_DIM_0]], %[[TRANSPOSE_RHS:.*]] : index, index, index, index, index, index, index, index, i8) -> tensor<1x?x?xf32>
 // CHECK:             flow.return %[[UKERNEL]] : tensor<1x?x?xf32>
 // CHECK:           } count() -> (index, index, index) {
 // CHECK:             %[[ONE:.*]] = arith.constant 1 : index
@@ -56,25 +56,25 @@ func.func @batch_matrix_multiply(%a : tensor<?x?x?xf32>, %b : tensor<?x?x?xf32>)
 // CHECK:           }
 // CHECK:           return %[[RESULT]] : tensor<1x?x?xf32>
 
-// CHECK-LABEL:   func.func @fully_connected(
-// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_0
-func.func @fully_connected(%a : tensor<1x?x?xi8>, %b : tensor<?x?xi4>) -> tensor<1x?x?xf32> {
-  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %a, %b transpose_rhs = false : (tensor<1x?x?xi8>, tensor<?x?xi4>) -> tensor<1x?x?xf32>
+// CHECK-LABEL:   func.func @fully_connected$rank3_input(
+// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_0
+func.func @fully_connected$rank3_input(%a : tensor<1x?x?xi8>, %b : tensor<?x?xi4>) -> tensor<1x?x?xf32> {
+  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input %a, %b transpose_rhs = false : (tensor<1x?x?xi8>, tensor<?x?xi4>) -> tensor<1x?x?xf32>
   func.return %c : tensor<1x?x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w_0(
-// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w_1(
+// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_0(
+// CHECK-LABEL:   func.func private @xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_1(
 
 // CHECK-LABEL:   func.func @fully_connected$multiple_static(
-// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_0
-// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_1
+// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_0
+// CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input_1
 func.func @fully_connected$multiple_static(%input_0 : tensor<1x2x8xi8>, %kernel_0 : tensor<4x8xi4>,
                                            %input_1 : tensor<1x2x16xi8>, %kernel_1 : tensor<4x16xi4>)
                                            -> (tensor<1x2x4xf32>, tensor<1x2x4xf32>) {
-  %output_0 = xnnpack.fully_connected_nc_qd8_f32_qc4w %input_0, %kernel_0 transpose_rhs = false : (tensor<1x2x8xi8>, tensor<4x8xi4>) -> tensor<1x2x4xf32>
-  %output_1 = xnnpack.fully_connected_nc_qd8_f32_qc4w %input_1, %kernel_1 transpose_rhs = false : (tensor<1x2x16xi8>, tensor<4x16xi4>) -> tensor<1x2x4xf32>
+  %output_0 = xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input %input_0, %kernel_0 transpose_rhs = false : (tensor<1x2x8xi8>, tensor<4x8xi4>) -> tensor<1x2x4xf32>
+  %output_1 = xnnpack.fully_connected_nc_qd8_f32_qc4w_rank3_input %input_1, %kernel_1 transpose_rhs = false : (tensor<1x2x16xi8>, tensor<4x16xi4>) -> tensor<1x2x4xf32>
   func.return %output_0, %output_1 : tensor<1x2x4xf32>, tensor<1x2x4xf32>
 }

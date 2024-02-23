@@ -86,7 +86,8 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
       return op->emitError("unimplemented: broadcasting");
     }
     dims.push_back({dims[0][0]});
-  } else if (auto fullyConnected = dyn_cast<FullyConnectedNcQd8F32Qc4wOp>(op)) {
+  } else if (auto fullyConnected =
+                 dyn_cast<FullyConnectedNcQd8F32Qc4w_Rank3InputOp>(op)) {
     auto inputType =
         fullyConnected.getInput().getType().cast<RankedTensorType>();
     ArrayRef<int64_t> batchDims = inputType.getShape().drop_back(2);
@@ -114,7 +115,7 @@ static FailureOr<SmallVector<SmallVector<Value>>> getInputOutputDims(
                                                           : kernelDims[0]);
     dims.push_back(outputDims);
   } else if (auto fullyConnected =
-                 dyn_cast<FullyConnectedNcQd8F32Qc4wVecmatOp>(op)) {
+                 dyn_cast<FullyConnectedNcQd8F32Qc4w_Rank2InputOp>(op)) {
     auto inputType =
         fullyConnected.getInput().getType().cast<RankedTensorType>();
     auto kernelType =
