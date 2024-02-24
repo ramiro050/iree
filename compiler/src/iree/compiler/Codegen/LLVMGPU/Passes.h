@@ -40,7 +40,7 @@ void addGPUPackUnPackPasses(OpPassManager &pm);
 void addGPUSimpleDistributePassPipeline(OpPassManager &pm);
 
 /// Transform dialect-based path.
-void addGPUTransformDialectPasses(OpPassManager &pm);
+void addGPUTransformDialectPasses(OpPassManager &pm, StringRef entryPoint);
 
 /// Lowering transpose using shared memory.
 void addGPUTransposePassPipeline(OpPassManager &pm);
@@ -75,6 +75,11 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertToROCDLPass();
 /// Cast address space to generic in CallOp and FuncOp
 std::unique_ptr<OperationPass<ModuleOp>>
 createLLVMGPUCastAddressSpaceFunction();
+
+/// Perform type extension/truncation over vector.contract types to target GPU
+/// MMA intrinsics.
+std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
+createLLVMGPUCastTypeToFitMMAPass();
 
 std::unique_ptr<InterfacePass<mlir::FunctionOpInterface>>
 createLLVMGPUDistribute();

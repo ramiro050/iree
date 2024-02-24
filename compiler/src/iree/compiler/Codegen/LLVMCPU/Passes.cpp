@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-dialects/Dialect/LinalgExt/Passes/Passes.h"
+#include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/CPU/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
@@ -100,8 +100,9 @@ static void addTileAndDistributePasses(OpPassManager &pm) {
       createFuseTensorPadWithConsumerPass());
   nestedModulePM.addNestedPass<func::FuncOp>(
       createConcretizePadResultShapePass());
-  nestedModulePM.addNestedPass<func::FuncOp>(
-      IREE::LinalgExt::createTileAndDecomposeAttentionPass());
+  // TODO(#16421): Disable decomposition due to failure in bufferization.
+  // nestedModulePM.addNestedPass<func::FuncOp>(
+  //     IREE::LinalgExt::createTileAndDecomposeAttentionPass());
   nestedModulePM.addNestedPass<func::FuncOp>(
       IREE::LinalgExt::createTileAndDecomposeWinogradTransformPass());
 }
@@ -582,10 +583,11 @@ void addCPUDefaultPassPipeline(OpPassManager &passManager) {
   addCPUBufferizePasses(nestedModulePM);
 }
 
-void addTransformDialectPasses(OpPassManager &passManager) {
+void addTransformDialectPasses(OpPassManager &passManager,
+                               StringRef entryPoint) {
   // Give control to the transform dialect.
   passManager.addPass(
-      mlir::iree_compiler::createTransformDialectInterpreterPass());
+      mlir::iree_compiler::createTransformDialectInterpreterPass(entryPoint));
   // Dropping the schedule is needed:
   //   1. if we want to embed the transform in the module: we should drop the
   //      schedule once applied.
@@ -764,6 +766,11 @@ void registerCodegenLLVMCPUPasses() {
       [](OpPassManager &passManager) {
         buildLLVMCPUCodegenConfigurationPassPipeline(passManager);
       });
+
+  static PassPipelineRegistration<> LLVMCPUBufferizationPipeline(
+      "iree-codegen-llvmcpu-bufferization-pipeline",
+      "Runs the bufferization pipeline for CPU",
+      [](OpPassManager &passManager) { addCPUBufferizePasses(passManager); });
 
   static PassPipelineRegistration<> LLVMCPUVectorLoweringPipeline(
       "iree-codegen-llvmcpu-vector-lowering-pipeline",

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-dialects/Dialect/LinalgExt/Passes/Passes.h"
+#include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 
 #include <cstdint>
 
@@ -22,6 +22,7 @@
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToGPU/VectorToGPU.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -46,6 +47,12 @@ constexpr int64_t kDefaultSubgroupSize = 32;
 static llvm::cl::opt<unsigned>
     logSwizzleTile("iree-codegen-log-swizzle-tile",
                    llvm::cl::desc("log swizzle tile value"), llvm::cl::init(0));
+
+llvm::cl::opt<int64_t> clLLVMGPUSharedMemoryLimit(
+    "iree-llvmgpu-shared-memory-limit",
+    llvm::cl::desc("specify the maximum amount of shared memory allowed to be "
+                   "allocated for the given target"),
+    llvm::cl::init(163 * 1024));
 
 //===----------------------------------------------------------------------===//
 // Bufferization Configuration
@@ -106,8 +113,9 @@ tileAndDistributeToWorkgroup(OpPassManager &pm,
   nestedModulePM.addNestedPass<func::FuncOp>(
       createConvertToDestinationPassingStylePass(
           useWARForCooperativeMatrixCodegen));
-  nestedModulePM.addNestedPass<func::FuncOp>(
-      IREE::LinalgExt::createTileAndDecomposeAttentionPass());
+  // TODO(#16421): Disable decomposition due to failure in bufferization.
+  // nestedModulePM.addNestedPass<func::FuncOp>(
+  //     IREE::LinalgExt::createTileAndDecomposeAttentionPass());
   nestedModulePM.addPass(createCanonicalizerPass());
   nestedModulePM.addPass(createCSEPass());
 }
@@ -126,7 +134,6 @@ static void addGPUVectorizationPasses(OpPassManager &pm) {
   options.vectorizeGatherAccesses = true;
   options.enableCleanup = false;
   options.foldCastIntoContract = true;
-  options.maxVectorSize = 4096;
   pm.addNestedPass<func::FuncOp>(createGenericVectorizationPass(options));
   pm.addNestedPass<func::FuncOp>(createOptimizeTensorInsertExtractSlicesPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
@@ -506,6 +513,8 @@ void addGPUVectorDistributePassPipeline(OpPassManager &pm) {
       createHoistStaticallyBoundAllocationsPass());
 
   // Vector SIMD -> Vector SIMT
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      createLLVMGPUCastTypeToFitMMAPass());
   nestedModulePM.addNestedPass<func::FuncOp>(createLLVMGPUVectorDistribute());
   nestedModulePM.addPass(createCanonicalizerPass());
   nestedModulePM.addPass(createCSEPass());
@@ -538,7 +547,6 @@ void addGPUWarpReductionPassPipeline(OpPassManager &pm) {
     options.vectorizeGatherAccesses = true;
     options.enableCleanup = false;
     options.generateContract = false;
-    options.maxVectorSize = 16384;
     nestedModulePM.addNestedPass<func::FuncOp>(
         createGenericVectorizationPass(options));
     nestedModulePM.addNestedPass<func::FuncOp>(
@@ -693,8 +701,9 @@ static void addLowerToLLVMGPUPasses(OpPassManager &pm, bool forROCDL) {
 
   // Run checks on shared memory usage.
   // TODO: query this from the target.
-  auto getSharedMemoryLimit = [](mlir::FunctionOpInterface) {
-    return 163 * 1024;
+  int64_t limit = clLLVMGPUSharedMemoryLimit;
+  auto getSharedMemoryLimit = [limit](mlir::FunctionOpInterface) {
+    return limit;
   };
   auto getIndexBitwidth = [](mlir::FunctionOpInterface) { return 64; };
   pm.addPass(
@@ -719,6 +728,7 @@ static void addLowerToLLVMGPUPasses(OpPassManager &pm, bool forROCDL) {
   pm.addPass(memref::createFoldMemRefAliasOpsPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
   pm.addPass(createEmulateNarrowTypePass());
+  pm.addPass(affine::createAffineExpandIndexOpsPass());
   pm.addPass(createLowerAffinePass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
@@ -740,9 +750,10 @@ static void addLowerToLLVMGPUPasses(OpPassManager &pm, bool forROCDL) {
 extern llvm::cl::opt<std::string> clGPUCodegenTransformDialectDebugPayloadTag;
 extern llvm::cl::opt<std::string> clGPUCodegenTransformDialectDebugTransformTag;
 
-void addGPUTransformDialectPasses(OpPassManager &passManager) {
+void addGPUTransformDialectPasses(OpPassManager &passManager,
+                                  StringRef entryPoint) {
   passManager.addPass(
-      mlir::iree_compiler::createTransformDialectInterpreterPass());
+      mlir::iree_compiler::createTransformDialectInterpreterPass(entryPoint));
 
   // Dropping the schedule is needed:
   //   1. if we want to embed the transform in the module: we should drop the
