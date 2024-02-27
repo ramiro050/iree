@@ -147,6 +147,16 @@ static FailureOr<func::FuncOp> createUKernelGeneric(
         Value dest = rewriter.create<tensor::EmptyOp>(loc, resultDimsFolded,
                                                       resultElementType);
 
+        SmallVector<Value> otherOperands;
+        for (auto dims : maybeDims.value()) otherOperands.append(dims);
+        if (auto fc = dyn_cast<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(op)) {
+          Value transposeRhs = rewriter.create<arith::ConstantIntOp>(
+              loc, fc.getTransposeRhs(), 8);
+          Value id = rewriter.create<arith::ConstantIndexOp>(
+              loc, fc.getKernelIdAttr().getInt());
+          otherOperands.append({transposeRhs, id});
+        }
+
         auto dispatchRegion = rewriter.create<IREE::Flow::DispatchRegionOp>(
             loc, resultTypes, /*result_dims=*/dynResultDims,
             /*workload=*/ValueRange{});
@@ -154,20 +164,6 @@ static FailureOr<func::FuncOp> createUKernelGeneric(
         {
           OpBuilder::InsertionGuard guard(rewriter);
           rewriter.setInsertionPointToStart(&dispatchBody);
-
-          SmallVector<Value> otherOperands;
-          for (auto dims : maybeDims.value()) otherOperands.append(dims);
-          for (auto attr : op->getAttrs()) {
-            if (auto boolAttr = dyn_cast<BoolAttr>(attr.getValue())) {
-              Value boolVal = rewriter.create<arith::ConstantIntOp>(
-                  loc, boolAttr.getValue(), 8);
-              otherOperands.push_back(boolVal);
-            } else {
-              return op->emitError()
-                     << "unimplemented: handling of attribute with value '"
-                     << attr.getValue() << "'";
-            }
-          }
 
           auto ukernel =
               rewriter

@@ -208,9 +208,11 @@ class ConvertFullyConnectedLayer
     info.kernel =
         rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
-    auto transposeRhs = BoolAttr::get(op.getContext(), info.transposeRhs);
+    auto transposeRhs = rewriter.getBoolAttr(info.transposeRhs);
+    auto kernelIdAttr = rewriter.getIndexAttr(-1);
     Value result = rewriter.create<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        op.getLoc(), rank2OutputType, info.input, info.kernel, transposeRhs);
+        op.getLoc(), rank2OutputType, info.input, info.kernel, transposeRhs,
+        kernelIdAttr);
 
     if (inputRank > 2) {
       result = rewriter.create<stablehlo::ReshapeOp>(op.getLoc(), outputType,
@@ -349,7 +351,10 @@ class ConvertStablehloToXnnpackPass
       patterns.add<ConvertFullyConnectedLayer>(context);
     }
 
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 

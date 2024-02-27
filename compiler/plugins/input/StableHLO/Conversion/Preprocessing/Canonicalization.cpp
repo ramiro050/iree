@@ -1152,6 +1152,32 @@ struct ReorderElementwiseAndShapeOp final
   }
 };
 
+// If an iteration variable has the same value in every iteration, replace the
+// uses of that variable with the value used to initialize it.
+struct WhileOpCanon final : OpRewritePattern<mlir::stablehlo::WhileOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::stablehlo::WhileOp op,
+                                PatternRewriter &rewriter) const override {
+    Block &body = op.getBody().front();
+    auto terminator = cast<mlir::stablehlo::ReturnOp>(body.getTerminator());
+    bool modified = false;
+    for (auto [blockArg, operand, result] : llvm::zip_equal(
+             body.getArguments(), op.getOperands(), terminator.getOperands())) {
+      // If the block argument is only used by the terminator, there is nothing
+      // to replace.
+      if (blockArg != result || blockArg.hasOneUse())
+        continue;
+
+      // Exclude the terminator to avoid modifying the operands iterator while
+      // iterating.
+      rewriter.replaceAllUsesExcept(blockArg, operand, terminator);
+      modified = true;
+    }
+    return success(modified);
+  }
+};
+
 struct StableHLOCanonicalize final
     : impl::StableHLOCanonicalizeBase<StableHLOCanonicalize> {
   void runOnOperation() override {
@@ -1189,6 +1215,8 @@ void populateCanonicalizationPatterns(MLIRContext *context,
       // Shape manipulation(-ish) ops.
       ConcatenateOpCanon, ConvertOpCanon, DynamicReshapeOpCanon, GatherOpCanon,
       ReshapeOpCanon, MergeConsecutiveReshapes, TransposeIsReshape,
+      // Loop ops.
+      WhileOpCanon,
       // Types.
       ZeroExtentTensorCanon>(context, benefit);
   patterns->add<ReorderElementwiseAndShapeOp>(context);

@@ -793,3 +793,26 @@ func.func @generic_op(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf3
 // CHECK-LABEL: func.func @generic_op
 // CHECK-NEXT:    "test_dialect.op"
 // CHECK-NEXT:    return
+
+// -----
+
+func.func @while() -> (tensor<i64>, tensor<i64>) {
+  %init_i = stablehlo.constant dense<0> : tensor<i64>
+  %one = stablehlo.constant dense<1> : tensor<i64>
+  %ten = stablehlo.constant dense<10> : tensor<i64>
+  %results0, %results1 = stablehlo.while(%arg0 = %init_i, %arg1 = %one) : tensor<i64>, tensor<i64>
+  cond {
+    %cond = stablehlo.compare LT, %arg0, %ten : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    stablehlo.return %cond : tensor<i1>
+  } do {
+    %new_i = stablehlo.xor %arg0, %arg1 : (tensor<i64>, tensor<i64>) -> tensor<i64>
+    stablehlo.return %new_i, %arg1 : tensor<i64>, tensor<i64>
+  }
+  return %results0, %results1 : tensor<i64>, tensor<i64>
+}
+
+// CHECK-LABEL: func.func @while
+// CHECK: %[[ONE:.*]] = stablehlo.constant dense<1> : tensor<i64>
+// CHECK: {{.*}} = stablehlo.while(%[[ARG_0:.*]] = %[[INIT_I:.*]], %[[ARG_1:.*]] = %[[ONE]]) : tensor<i64>, tensor<i64>
+// CHECK:   %[[NEW_I:.*]] = stablehlo.xor %[[ARG_0]], %[[ONE]]
+// CHECK:   stablehlo.return %[[NEW_I]], %[[ARG_1]]

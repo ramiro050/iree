@@ -5,8 +5,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree/compiler/PluginAPI/Client.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Transforms/Passes.h"
+#include "stablehlo-iree/Conversion/Preprocessing/Passes.h"
 #include "xnnpack/Conversion/Passes.h"
 #include "xnnpack/IR/XnnpackDialect.h"
 #include "xnnpack/Transforms/Passes.h"
@@ -35,6 +38,10 @@ struct XnnpackSession : public PluginSession<XnnpackSession, XnnpackOptions> {
   void extendInputConversionPreprocessingPassPipeline(
       OpPassManager &pm, InputDialectOptions::Type inputType) override {
     pm.addPass(IREE::Xnnpack::createConvertStablehloToXnnpack());
+    pm.addNestedPass<func::FuncOp>(
+        mlir::iree_compiler::stablehlo::createStableHLOCanonicalize());
+    pm.addNestedPass<func::FuncOp>(mlir::createCSEPass());
+    pm.addPass(IREE::Xnnpack::createSetIdAttributes());
   }
 
   void extendPreprocessingPassPipeline(OpPassManager &pm) override {
