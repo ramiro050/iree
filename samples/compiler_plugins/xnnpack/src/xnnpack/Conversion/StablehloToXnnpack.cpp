@@ -176,6 +176,26 @@ class ConvertFullyConnectedLayer
           "or f32 output");
     }
 
+    size_t inputRank = inputType.getRank();
+    auto rank2OutputType = outputType;
+    if (inputRank > 2) {
+      ArrayRef<int64_t> inputShape(inputType.getShape());
+      ArrayRef<int64_t> outputShape(outputType.getShape());
+      ArrayRef<int64_t> batchDims = inputShape.drop_back(2);
+      for (size_t batchDim : batchDims) {
+        if (batchDim != 1) {
+          return error("unimplemented: input with batch dimensions != 1");
+        }
+      }
+      auto rank2InputType = RankedTensorType::get(
+          inputShape.drop_front(batchDims.size()), inputType.getElementType());
+      rank2OutputType =
+          RankedTensorType::get(outputShape.drop_front(batchDims.size()),
+                                outputType.getElementType());
+      info.input = rewriter.create<stablehlo::ReshapeOp>(
+          op.getLoc(), rank2InputType, info.input);
+    }
+
     auto offsetType = RankedTensorType::get(kernelType.getShape(),
                                             rewriter.getIntegerType(8));
     int8_t offsetInt = 8;
@@ -187,8 +207,15 @@ class ConvertFullyConnectedLayer
         rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
     auto transposeRhs = BoolAttr::get(op.getContext(), info.transposeRhs);
-    rewriter.replaceOpWithNewOp<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
-        op, outputType, info.input, info.kernel, transposeRhs);
+    Value result = rewriter.create<Xnnpack::FullyConnectedNcQd8F32Qc4wOp>(
+        op.getLoc(), rank2OutputType, info.input, info.kernel, transposeRhs);
+
+    if (inputRank > 2) {
+      result = rewriter.create<stablehlo::ReshapeOp>(op.getLoc(), outputType,
+                                                     result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 

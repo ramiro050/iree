@@ -1,4 +1,6 @@
-// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack %s | \
+// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack --compile-to=flow %s | \
+// RUN: iree-opt --inline | \
+// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --compile-from=flow - | \
 // RUN: iree-run-module \
 // RUN:     --device=local-sync \
 // RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/xnnpack/plugin/system_plugin$IREE_DYLIB_EXT \
@@ -11,7 +13,7 @@
 
 // CHECK-SYSTEM: EXEC @main
 // CHECK-SYSTEM: 2x2x2xf32={{\[}}[16 16][16 16]]{{\[}}[16 16][16 16]]
-func.func @main(%a : tensor<?x2x2xf32>, %b : tensor<?x2x2xf32>) -> tensor<?x2x2xf32> {
-  %c = xnnpack.batch_matrix_multiply %a, %b : (tensor<?x2x2xf32>, tensor<?x2x2xf32>) -> tensor<?x2x2xf32>
-  func.return %c : tensor<?x2x2xf32>
+func.func @main(%a : tensor<2x2x2xf32>, %b : tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
+  %c = xnnpack.batch_matrix_multiply %a, %b : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
+  func.return %c : tensor<2x2x2xf32>
 }

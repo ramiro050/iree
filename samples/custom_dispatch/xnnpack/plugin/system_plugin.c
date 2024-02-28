@@ -46,53 +46,88 @@ typedef struct {
   pthreadpool_t threadpool;
 } system_plugin_t;
 
+static bool is_default_stride(size_t* strides, size_t* dim_sizes, size_t rank) {
+  size_t acc = 1;
+  for (size_t i = 0; i < rank; i++) {
+    size_t index = rank - i - 1;
+    if (strides[index] != acc) return false;
+    acc *= dim_sizes[index];
+  }
+  return true;
+}
+
 static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
                                                      void* context,
                                                      void* reserved) {
   system_plugin_t* plugin = (system_plugin_t*)context;
   typedef struct {
-    const int8_t* restrict binding0;
-    size_t binding0_offset;
-    size_t binding0_stride0;
-    size_t binding0_stride1;
-    size_t binding0_stride2;
-    const int8_t* restrict binding1;
-    size_t binding1_offset;
-    size_t binding1_stride0;
-    size_t binding1_stride1;
-    float* restrict binding2;
-    size_t binding2_offset;
-    size_t binding2_stride0;
-    size_t binding2_stride1;
-    size_t binding2_stride2;
-    size_t binding0_size0;
-    size_t binding0_size1;
-    size_t binding0_size2;
-    size_t binding1_size0;
-    size_t binding1_size1;
-    size_t binding2_size0;
-    size_t binding2_size1;
-    size_t binding2_size2;
+    const int8_t* restrict input;
+    size_t input_offset;
+    size_t input_stride0;
+    size_t input_stride1;
+    const int8_t* restrict kernel;
+    size_t kernel_offset;
+    size_t kernel_stride0;
+    size_t kernel_stride1;
+    float* restrict output;
+    size_t output_offset;
+    size_t output_stride0;
+    size_t output_stride1;
+    size_t input_size0;
+    size_t input_size1;
+    size_t kernel_size0;
+    size_t kernel_size1;
+    size_t output_size0;
+    size_t output_size1;
     int8_t transpose_rhs;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
 
-  const pthreadpool_t threadpool = plugin->threadpool;
-  assert(threadpool && "unable to create threadpool");
+  size_t input_strides[2] = {params->input_stride0, params->input_stride1};
+  size_t input_shape[2] = {params->input_size0, params->input_size1};
+  if (!is_default_stride(input_strides, input_shape, /*rank=*/2)) {
+    fprintf(stderr, "unimplemented: input without default stride\n");
+    fprintf(stderr, "stride=[%zu, %zu], size=[%zu, %zu]\n", input_strides[0],
+            input_strides[1], input_shape[0], input_shape[1]);
+    return 1;
+  }
+
+  size_t kernel_strides[2] = {params->kernel_stride0, params->kernel_stride1};
+  size_t kernel_shape[2] = {params->kernel_size0, params->kernel_size1};
+  if (!is_default_stride(kernel_strides, kernel_shape, /*rank=*/2)) {
+    fprintf(stderr, "unimplemented: kernel without default stride\n");
+    fprintf(stderr, "stride=[%zu, %zu], size=[%zu, %zu]\n", kernel_strides[0],
+            kernel_strides[1], kernel_shape[0], kernel_shape[1]);
+    return 1;
+  }
+
+  size_t output_strides[2] = {params->output_stride0, params->output_stride1};
+  size_t output_shape[2] = {params->output_size0, params->output_size1};
+  if (!is_default_stride(output_strides, output_shape, /*rank=*/2)) {
+    fprintf(stderr, "unimplemented: output without default stride\n");
+    fprintf(stderr, "stride=[%zu, %zu], size=[%zu, %zu]\n", output_strides[0],
+            output_strides[1], output_shape[0], output_shape[1]);
+    return 1;
+  }
 
   enum xnn_status status;
-  assert(params->binding0_size0 == 1 && "unsupported input size");
-  size_t input_reduction_dim_size = params->binding0_size2;
+  size_t input_reduction_dim_size = input_shape[1];
   size_t kernel_reduction_dim_size =
-      params->transpose_rhs ? params->binding1_size0 : params->binding1_size1;
-  assert(input_reduction_dim_size == kernel_reduction_dim_size &&
-         "reduction dimensions are not the same size");
+      params->transpose_rhs ? kernel_shape[0] : kernel_shape[1];
+  if (input_reduction_dim_size != kernel_reduction_dim_size) {
+    fprintf(stderr, "reduction dimensions are not the same size\n");
+    return 1;
+  }
 
-  const size_t batch_size = params->binding0_size1;
-  const size_t input_channels = params->binding0_size2;
+  const size_t batch_size = input_shape[0];
+  const size_t input_channels = input_shape[1];
   const size_t output_channels =
-      params->transpose_rhs ? params->binding1_size1 : params->binding1_size0;
-  assert((input_channels & 1) == 0 && "`input_channels` must be even");
+      params->transpose_rhs ? kernel_shape[1] : kernel_shape[0];
+  if ((input_channels & 1) != 0) {
+    fprintf(stderr, "`input_channels` must be even\n");
+    return 1;
+  }
+
   // TODO: XNNPACK expects this value to be 8. From testing, this value is
   // subtracted from the kernel before using it in the matrix multiplication.
   // For IREE's use-case, this value should be 0.
@@ -101,12 +136,13 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   const float output_max = FLT_MAX;
   // TODO: XNNPACK expects the input tensor to be padded by `XNN_EXTRA_BYTES`.
   // This padding should happen on the IREE side.
-  const int8_t* input = &(params->binding0[params->binding0_offset]);
-  // TODO: handle sub-byte offset
-  assert(params->binding1_offset == 0 &&
-         "unimplemented: non-zero offset for kernel buffer");
-  const void* kernel = params->binding1;
-  float* output = &(params->binding2[params->binding2_offset]);
+  const int8_t* input = &(params->input[params->input_offset]);
+  if ((params->kernel_offset & 1) != 0) {
+    fprintf(stderr, "`kernel_offset` must be even\n");
+    return 1;
+  }
+  const void* kernel = &(params->kernel[params->kernel_offset / 2]);
+  float* output = &(params->output[params->output_offset]);
 
   // TODO: figure out a way to avoid this allocation. From testing, passing NULL
   // seems to make the scale default to 0, which is not what we want.
@@ -121,12 +157,18 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
       kernel, /*bias=*/NULL, output_min, output_max, flags,
       /*code_cache=*/NULL,
       /*weights_cache=*/NULL, &fc_op);
-  assert(status == xnn_status_success && "unable to create fully connected op");
-  status =
-      xnn_reshape_fully_connected_nc_qd8_f32_qc4w(fc_op, batch_size,
-                                                  /*threadpool=*/threadpool);
-  assert(status == xnn_status_success &&
-         "unable to reshape fully connected op");
+  if (status != xnn_status_success) {
+    fprintf(stderr, "unable to create fully connected op\n");
+    return 1;
+  }
+
+  status = xnn_reshape_fully_connected_nc_qd8_f32_qc4w(
+      fc_op, batch_size,
+      /*threadpool=*/plugin->threadpool);
+  if (status != xnn_status_success) {
+    fprintf(stderr, "unable to reshape fully connected op\n");
+    return 1;
+  }
 
   // TODO: avoid this allocation
   struct xnn_dynamic_quantization_params* quantization_params =
@@ -136,12 +178,26 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     quantization_params[i].zero_point = 0;
     quantization_params[i].scale = 1;
   }
-  status = xnn_setup_fully_connected_nc_qd8_f32_qc4w(
-      fc_op, input, output, /*quantization_params=*/quantization_params);
-  assert(status == xnn_status_success && "unable to setup fully connected op");
 
-  status = xnn_run_operator(fc_op, /*threadpool=*/threadpool);
-  assert(status == xnn_status_success && "unable to run fully connected op");
+  status = xnn_setup_fully_connected_nc_qd8_f32_qc4w(
+      fc_op, input, output,
+      /*quantization_params=*/quantization_params);
+  if (status != xnn_status_success) {
+    fprintf(stderr, "unable to setup fully connected op\n");
+    return 1;
+  }
+
+  status = xnn_run_operator(fc_op, /*threadpool=*/plugin->threadpool);
+  if (status != xnn_status_success) {
+    fprintf(stderr, "unable to run fully connected op\n");
+    return 1;
+  }
+
+  status = xnn_delete_operator(fc_op);
+  if (status != xnn_status_success) {
+    fprintf(stderr, "unable to delete fully connected op\n");
+    return 1;
+  }
 
   free(quantization_params);
   free(kernel_scale);

@@ -1,4 +1,6 @@
-// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack %s | \
+// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack --compile-to=flow %s | \
+// RUN: iree-opt --inline | \
+// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --compile-from=flow - | \
 // RUN: iree-run-module \
 // RUN:     --device=local-sync \
 // RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/xnnpack/plugin/system_plugin$IREE_DYLIB_EXT \
@@ -19,7 +21,7 @@
 // CHECK-SYSTEM: mul2[6](2 * 4 = 8)
 // CHECK-SYSTEM: mul2[7](2 * 4 = 8)
 // CHECK-SYSTEM: 8xf32=8 8 8 8 8 8 8 8
-func.func @main(%a : tensor<?xf32>, %b : tensor<?xf32>) -> tensor<?xf32> {
-  %c = xnnpack.multiply2 %a, %b : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  func.return %c : tensor<?xf32>
+func.func @main(%a : tensor<8xf32>, %b : tensor<8xf32>) -> tensor<8xf32> {
+  %c = xnnpack.multiply2 %a, %b : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+  func.return %c : tensor<8xf32>
 }
