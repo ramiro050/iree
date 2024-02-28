@@ -49,3 +49,15 @@ func.func @fully_connected$no_defining_op_for_convert_operand(%input : tensor<i8
   %out = stablehlo.convert %input : (tensor<i8>) -> tensor<i16>
   return %out : tensor<i16>
 }
+
+// CHECK-LABEL:   func.func @fully_connected$input_cast(
+// CHECK-SAME:                           %[[LHS:.*]]: tensor<100x200xf32>
+// CHECK:           %[[LHS_CAST:.*]] = stablehlo.convert %[[LHS]] : (tensor<{{.*}}f32>) -> tensor<{{.*}}i8>
+// CHECK:           %{{.*}} = xnnpack.fully_connected_nc_qd8_f32_qc4w %[[LHS_CAST]]
+func.func @fully_connected$input_cast(%input : tensor<100x200xf32>, %kernel : tensor<300x200xi4>) -> tensor<100x300xf32> {
+  %input_cast = stablehlo.convert %input : (tensor<100x200xf32>) -> tensor<100x200xi8>
+  %kernel_cast = stablehlo.convert %kernel : (tensor<300x200xi4>) -> tensor<300x200xi8>
+  %dot_general = stablehlo.dot_general %input_cast, %kernel_cast, contracting_dims = [1] x [1], precision = [DEFAULT, DEFAULT] : (tensor<100x200xi8>, tensor<300x200xi8>) -> tensor<100x300xi32>
+  %out = stablehlo.convert %dot_general : (tensor<100x300xi32>) -> tensor<100x300xf32>
+  return %out : tensor<100x300xf32>
+}
