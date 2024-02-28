@@ -117,22 +117,31 @@ LogicalResult parsePatternFromFile(MLIRContext *context,
   return mlir::verify(*patternModule);
 }
 
+static bool hasElementType(Value val, Type elementType) {
+  return val.getType().cast<RankedTensorType>().getElementType() == elementType;
+}
+
 // If `val` is the result of a `stablehlo.convert`, get the unconverted value.
-static Value getUnconvertedValue(Value val) {
-  if (auto convert = val.getDefiningOp<mlir::stablehlo::ConvertOp>())
-    return convert.getOperand();
-  return val;
+static Value getUnconvertedValueOfElemType(Value val, Type elementType) {
+  if (hasElementType(val, elementType)) return val;
+  if (auto convert = val.getDefiningOp<mlir::stablehlo::ConvertOp>()) {
+    if (hasElementType(convert.getOperand(), elementType))
+      return convert.getOperand();
+  }
+  return nullptr;
 }
 
 // If `val` is passed to a `stablehlo.convert`, get the converted value.
-static Value getConvertedValue(Value val) {
+static Value getConvertedValueOfElemType(Value val, Type elementType) {
+  if (hasElementType(val, elementType)) return val;
   if (val.hasOneUse()) {
     if (auto convert =
             dyn_cast<stablehlo::ConvertOp>(*val.getUsers().begin())) {
-      return convert.getResult();
+      if (hasElementType(convert.getResult(), elementType))
+        return convert.getResult();
     }
   }
-  return val;
+  return nullptr;
 }
 
 namespace {
@@ -168,13 +177,6 @@ class ConvertFullyConnectedLayer
     auto inputType = info.input.getType().cast<RankedTensorType>();
     auto kernelType = info.kernel.getType().cast<RankedTensorType>();
     auto outputType = info.output.getType().cast<RankedTensorType>();
-    if (!inputType.getElementType().isInteger(8) ||
-        !kernelType.getElementType().isInteger(4) ||
-        !outputType.getElementType().isF32()) {
-      return error(
-          "unimplemented: fully connected layer without i8 input, i4 kernel, "
-          "or f32 output");
-    }
 
     size_t inputRank = inputType.getRank();
     auto rank2OutputType = outputType;
@@ -272,10 +274,20 @@ class ConvertFullyConnectedLayer
       return error("not a fully connected pattern");
     }
 
+    Type i8Ty = IntegerType::get(op.getContext(), /*width=*/8);
+    Type i4Ty = IntegerType::get(op.getContext(), /*width=*/4);
+    Type f32Ty = Float32Type::get(op.getContext());
     FullyConnectedInfo info;
-    info.input = getUnconvertedValue(lhs);
-    info.kernel = getUnconvertedValue(rhs);
-    info.output = getConvertedValue(op.getResult());
+    info.input = getUnconvertedValueOfElemType(lhs, i8Ty);
+    info.kernel = getUnconvertedValueOfElemType(rhs, i4Ty);
+    info.output = getConvertedValueOfElemType(op.getResult(), f32Ty);
+
+    if (!info.input || !info.kernel || !info.output) {
+      return error(
+          "unimplemented: fully connected layer without i8 input, i4 kernel, "
+          "or f32 output");
+    }
+
     info.transposeRhs = rhsContractingDim - rhsBatchDimsCount == 0;
 
     auto inputType = info.input.getType().cast<RankedTensorType>();
