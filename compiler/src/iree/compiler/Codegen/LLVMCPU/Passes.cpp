@@ -100,9 +100,6 @@ static void addTileAndDistributePasses(OpPassManager &pm) {
       createFuseTensorPadWithConsumerPass());
   nestedModulePM.addNestedPass<func::FuncOp>(
       createConcretizePadResultShapePass());
-  // TODO(#16421): Disable decomposition due to failure in bufferization.
-  // nestedModulePM.addNestedPass<func::FuncOp>(
-  //     IREE::LinalgExt::createTileAndDecomposeAttentionPass());
   nestedModulePM.addNestedPass<func::FuncOp>(
       IREE::LinalgExt::createTileAndDecomposeWinogradTransformPass());
 }
@@ -316,10 +313,9 @@ void buildLLVMCPUVectorLoweringPipeline(
       createLLVMCPUVectorShapeCastLoweringPass());
 }
 
-void addCPUBufferOpsTileAndVectorizePipeline(OpPassManager &passManager,
-                                             TilingConfig &tilingConfig,
-                                             bool enableVectorMasking,
-                                             bool enableAArch64SSVE) {
+void addCPUBufferOpsTileAndVectorizePipeline(
+    OpPassManager &passManager, TilingConfig &tilingConfig,
+    LLVMCPUPipelineOptions &pipelineOpt) {
   addTileAndDistributePasses(passManager);
 
   // Skip tiling reduction loops because this is expected to apply on copy ops
@@ -330,7 +326,7 @@ void addCPUBufferOpsTileAndVectorizePipeline(OpPassManager &passManager,
   nestedModulePM.addNestedPass<func::FuncOp>(createLLVMCPUPeelPass());
   {
     GenericVectorizationPassOptions options;
-    options.enableVectorMasking = enableVectorMasking;
+    options.enableVectorMasking = pipelineOpt.enableVectorMasking;
     options.vectorizeGatherAccesses = true;
     nestedModulePM.addNestedPass<func::FuncOp>(
         createGenericVectorizationPass(options));
@@ -346,19 +342,21 @@ void addCPUBufferOpsTileAndVectorizePipeline(OpPassManager &passManager,
 
   {
     LLVMCPUVectorLoweringPassOptions options;
+    options.lowerVectorTransposeToAVX2 = pipelineOpt.lowerToAVX2;
     options.splitVectorTransfersTo = "linalg-copy";
     buildLLVMCPUVectorLoweringPipeline(nestedModulePM, options);
   }
 
-  if (enableAArch64SSVE)
+  if (pipelineOpt.enableAArch64SSVE) {
     nestedModulePM.addNestedPass<func::FuncOp>(
         mlir::arm_sme::createEnableArmStreamingPass(
             mlir::arm_sme::ArmStreamingMode::StreamingLocally));
+  }
 }
 
-void addMultiTilingExpertPassPipeline(
-    OpPassManager &passManager, TilingConfig &tilingConfig, bool enablePeeling,
-    bool enableVectorMasking, bool lowerToAVX2, bool enableAArch64SSVE) {
+void addMultiTilingExpertPassPipeline(OpPassManager &passManager,
+                                      TilingConfig &tilingConfig,
+                                      LLVMCPUPipelineOptions &pipelineOpt) {
   addTileAndDistributePasses(passManager);
 
   OpPassManager &nestedModulePM = passManager.nest<ModuleOp>();
@@ -395,7 +393,7 @@ void addMultiTilingExpertPassPipeline(
     }
   }
 
-  if (enablePeeling) {
+  if (pipelineOpt.enablePeeling) {
     nestedModulePM.addNestedPass<func::FuncOp>(createLLVMCPUPeelPass());
   }
 
@@ -407,7 +405,7 @@ void addMultiTilingExpertPassPipeline(
     nestedModulePM.addNestedPass<func::FuncOp>(createCSEPass());
 
     GenericVectorizationPassOptions options;
-    options.enableVectorMasking = enableVectorMasking;
+    options.enableVectorMasking = pipelineOpt.enableVectorMasking;
     options.vectorizePadding = true;
     options.vectorizeGatherAccesses = true;
     nestedModulePM.addNestedPass<func::FuncOp>(
@@ -426,21 +424,21 @@ void addMultiTilingExpertPassPipeline(
 
   {
     LLVMCPUVectorLoweringPassOptions options;
-    options.lowerVectorTransposeToAVX2 = lowerToAVX2;
+    options.lowerVectorTransposeToAVX2 = pipelineOpt.lowerToAVX2;
     options.splitVectorTransfersTo = "linalg-copy";
     buildLLVMCPUVectorLoweringPipeline(nestedModulePM, options);
   }
 
-  if (enableAArch64SSVE)
+  if (pipelineOpt.enableAArch64SSVE) {
     nestedModulePM.addNestedPass<func::FuncOp>(
         mlir::arm_sme::createEnableArmStreamingPass(
             mlir::arm_sme::ArmStreamingMode::StreamingLocally));
+  }
 }
 
-void addConvTileAndDecomposeExpertPassPipeline(OpPassManager &passManager,
-                                               TilingConfig &tilingConfig,
-                                               bool enableVectorMasking,
-                                               bool enableAArch64SSVE) {
+void addConvTileAndDecomposeExpertPassPipeline(
+    OpPassManager &passManager, TilingConfig &tilingConfig,
+    LLVMCPUPipelineOptions &pipelineOpt) {
   addTileAndDistributePasses(passManager);
 
   OpPassManager &nestedModulePM = passManager.nest<ModuleOp>();
@@ -471,7 +469,7 @@ void addConvTileAndDecomposeExpertPassPipeline(OpPassManager &passManager,
   {
     nestedModulePM.addNestedPass<func::FuncOp>(createVectorizePadPass());
     GenericVectorizationPassOptions options;
-    options.enableVectorMasking = enableVectorMasking;
+    options.enableVectorMasking = pipelineOpt.enableVectorMasking;
     options.vectorizePadding = true;
     options.vectorizeGatherAccesses = true;
     nestedModulePM.addNestedPass<func::FuncOp>(
@@ -494,38 +492,65 @@ void addConvTileAndDecomposeExpertPassPipeline(OpPassManager &passManager,
 
   {
     LLVMCPUVectorLoweringPassOptions options;
+    options.lowerVectorTransposeToAVX2 = pipelineOpt.lowerToAVX2;
     options.splitVectorTransfersTo = "shuffle";
     buildLLVMCPUVectorLoweringPipeline(nestedModulePM, options);
   }
 
-  if (enableAArch64SSVE)
+  if (pipelineOpt.enableAArch64SSVE) {
     nestedModulePM.addNestedPass<func::FuncOp>(
         mlir::arm_sme::createEnableArmStreamingPass(
             mlir::arm_sme::ArmStreamingMode::StreamingLocally));
+  }
 }
 
 void addMmt4dTilingExpertPassPipeline(OpPassManager &passManager,
                                       TilingConfig &tilingConfig,
-                                      bool enableMicrokernels,
-                                      bool lowerToAVX2) {
+                                      LLVMCPUPipelineOptions &pipelineOpt) {
   addTileAndDistributePasses(passManager);
 
   OpPassManager &nestedModulePM = passManager.nest<ModuleOp>();
 
-  if (enableMicrokernels) {
+  if (pipelineOpt.enableUkernels) {
     nestedModulePM.addNestedPass<func::FuncOp>(
         createDecomposeBatchMmt4DOpsPass());
     nestedModulePM.addPass(
         createCPULowerToUKernelsPass(clSkipIntermediateRoundings));
   }
+
   // We still run codegen pipeline because we want a better fallback when
   // ukernels are not available. They are nop if the mmt4d op is convereted to
   // ukernels. If ukernels are not implemented, the lowering config is still
   // carried by compute ops, so we can use it as a fallback solution.
-  nestedModulePM.addNestedPass<func::FuncOp>(createLLVMCPUTileAndFusePass(
-      static_cast<int64_t>(tilingConfig.getVectorCommonParallelLevel())));
-  nestedModulePM.addNestedPass<func::FuncOp>(createLLVMCPUTilePass(
-      static_cast<int64_t>(tilingConfig.getVectorReductionLevel())));
+
+  // Apply tile and fuse to all the non-distribution fusable levels. Skip
+  // distribution level as such a level has been fused already.
+  SmallVector<int64_t> allFusableLevels(tilingConfig.getFusableLevels());
+  if (allFusableLevels.size() > 1) {
+    llvm::SmallSetVector<int64_t, 4> fusableLevels(allFusableLevels.begin(),
+                                                   allFusableLevels.end());
+    for (int i = 0, end = tilingConfig.getNumTilingLevels(); i < end; ++i) {
+      if (i == tilingConfig.getDistributionLevel())
+        continue;
+      if (fusableLevels.contains(i)) {
+        nestedModulePM.addNestedPass<func::FuncOp>(
+            createLLVMCPUTileAndFusePass(i));
+        continue;
+      }
+
+      if (i == tilingConfig.getVectorReductionLevel()) {
+        // Run SplitReductionPass before the final reduction Fuse pass, because
+        // SplitReductionPass takes care of banked-tiling.
+        nestedModulePM.addNestedPass<func::FuncOp>(
+            createLLVMCPUSplitReductionPass(clEnableReassociateFpReductions));
+        nestedModulePM.addNestedPass<func::FuncOp>(createLLVMCPUTilePass(i));
+        continue;
+      }
+
+      nestedModulePM.addNestedPass<func::FuncOp>(createLLVMCPUTilePass(i));
+    }
+  }
+
   nestedModulePM.addNestedPass<func::FuncOp>(createGenericVectorizationPass());
   nestedModulePM.addNestedPass<func::FuncOp>(
       createOptimizeTensorInsertExtractSlicesPass());
@@ -541,14 +566,14 @@ void addMmt4dTilingExpertPassPipeline(OpPassManager &passManager,
 
   // Generic vector lowering.
   LLVMCPUVectorLoweringPassOptions options;
-  options.lowerVectorTransposeToAVX2 = lowerToAVX2;
+  options.lowerVectorTransposeToAVX2 = pipelineOpt.lowerToAVX2;
   options.splitVectorTransfersTo = "linalg-copy";
   buildLLVMCPUVectorLoweringPipeline(nestedModulePM, options);
 }
 
 void addCPUDataTilingPipeline(OpPassManager &passManager,
                               TilingConfig &tilingConfig,
-                              bool enableVectorMasking) {
+                              LLVMCPUPipelineOptions &pipelineOpt) {
   addTileAndDistributePasses(passManager);
   OpPassManager &nestedModulePM = passManager.nest<ModuleOp>();
   nestedModulePM.addNestedPass<func::FuncOp>(
@@ -559,7 +584,7 @@ void addCPUDataTilingPipeline(OpPassManager &passManager,
   {
     GenericVectorizationPassOptions options;
     options.vectorizePadding = true;
-    options.enableVectorMasking = enableVectorMasking;
+    options.enableVectorMasking = pipelineOpt.enableVectorMasking;
     nestedModulePM.addNestedPass<func::FuncOp>(
         createGenericVectorizationPass(options));
     nestedModulePM.addNestedPass<func::FuncOp>(
@@ -572,6 +597,39 @@ void addCPUDataTilingPipeline(OpPassManager &passManager,
 
   {
     LLVMCPUVectorLoweringPassOptions options;
+    options.lowerVectorTransposeToAVX2 = pipelineOpt.lowerToAVX2;
+    options.splitVectorTransfersTo = "linalg-copy";
+    buildLLVMCPUVectorLoweringPipeline(nestedModulePM, options);
+  }
+}
+
+void addCPULinalgExtTileAndVectorizePipeline(
+    OpPassManager &passManager, TilingConfig &tilingConfig,
+    LLVMCPUPipelineOptions &pipelineOpt) {
+  addTileAndDistributePasses(passManager);
+  OpPassManager &nestedModulePM = passManager.nest<ModuleOp>();
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      createLLVMCPUTilePass(tilingConfig.getVectorCommonParallelLevel()));
+  // TODO: Should only apply decomposition here?
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      IREE::LinalgExt::createTileAndDecomposeAttentionPass());
+
+  {
+    GenericVectorizationPassOptions options;
+    options.enableVectorMasking = pipelineOpt.enableVectorMasking;
+    nestedModulePM.addNestedPass<func::FuncOp>(
+        createGenericVectorizationPass(options));
+    nestedModulePM.addNestedPass<func::FuncOp>(
+        createOptimizeTensorInsertExtractSlicesPass());
+    nestedModulePM.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+    nestedModulePM.addNestedPass<func::FuncOp>(createCSEPass());
+  }
+
+  addCPUBufferizePasses(nestedModulePM);
+
+  {
+    LLVMCPUVectorLoweringPassOptions options;
+    options.lowerVectorTransposeToAVX2 = pipelineOpt.lowerToAVX2;
     options.splitVectorTransfersTo = "linalg-copy";
     buildLLVMCPUVectorLoweringPipeline(nestedModulePM, options);
   }

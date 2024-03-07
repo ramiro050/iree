@@ -256,13 +256,11 @@ def HAL_AccessScopeBitfieldAttr :
 }
 
 def HAL_CallingConvention_Default : I32EnumAttrCase<"Default", 0>;
-def HAL_CallingConvention_ParameterStruct : I32EnumAttrCase<"ParameterStruct", 1>;
 def HAL_CallingConventionAttr :
     I32EnumAttr<
         "CallingConvention",
         "Calling conversions for linked functions",[
           HAL_CallingConvention_Default,
-          HAL_CallingConvention_ParameterStruct,
         ]>{
   let cppNamespace = "::mlir::iree_compiler::IREE::HAL";
 }
@@ -489,16 +487,17 @@ def HAL_DeviceTargetAttr :
     Example:
     ```mlir
     #hal.device.target<"llvm-cpu", {
-      executable_targets = [
-        #hal.executable.target<"llvm-cpu", "embedded-elf-arm_32">,
-        #hal.executable.target<"llvm-cpu", "embedded-elf-arm_64">,
-      ]
-    }>
+      device_configuration = ...
+    }, [
+      #hal.executable.target<"llvm-cpu", "embedded-elf-arm_32">,
+      #hal.executable.target<"llvm-cpu", "embedded-elf-arm_64">,
+    ]>
     ```
   }];
   let parameters = (ins
     AttrParameter<"StringAttr", "">:$deviceID,
-    AttrParameter<"DictionaryAttr", "">:$configuration
+    AttrParameter<"DictionaryAttr", "">:$configuration,
+    ArrayRefParameter<"ExecutableTargetAttr", "">:$executable_targets
   );
   let builders = [
     AttrBuilder<(ins "StringRef":$deviceID)>,
@@ -512,9 +511,6 @@ def HAL_DeviceTargetAttr :
     // Returns true if there's an attribute with the given name in the
     // configuration dictionary.
     bool hasConfigurationAttr(StringRef name);
-
-    // Returns zero or more executable targets that this device supports.
-    SmallVector<IREE::HAL::ExecutableTargetAttr, 4> getExecutableTargets();
 
     // Returns a list of target devices that may be active for the given
     // operation. This will recursively walk parent operations until one with

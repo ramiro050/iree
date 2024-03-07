@@ -49,6 +49,7 @@ iree_cc_library(
   SRCS
     "AMDGPUDistributeContract.cpp"
     "GPUCheckResourceUsage.cpp"
+    "GPUCreateFastSlowPath.cpp"
     "GPUDistribute.cpp"
     "GPUDistributeSharedMemoryCopy.cpp"
     "GPUDistributionPatterns.cpp"
@@ -78,7 +79,9 @@ iree_cc_library(
     MLIRAffineDialect
     MLIRAffineTransforms
     MLIRAffineUtils
+    MLIRAnalysis
     MLIRArithDialect
+    MLIRArithUtils
     MLIRBufferizationDialect
     MLIRDestinationStyleOpInterface
     MLIRFuncDialect
@@ -102,6 +105,7 @@ iree_cc_library(
     MLIRSideEffectInterfaces
     MLIRSupport
     MLIRTensorDialect
+    MLIRTensorTransforms
     MLIRTransforms
     MLIRVectorDialect
     MLIRVectorToSCF
@@ -113,8 +117,6 @@ iree_cc_library(
     iree::compiler::Codegen::Utils
     iree::compiler::Codegen::Utils::VectorOpUtils
     iree::compiler::Dialect::HAL::IR
-    iree::compiler::Dialect::LinalgExt::IR
-    iree::compiler::Dialect::LinalgExt::Transforms
   PUBLIC
 )
 

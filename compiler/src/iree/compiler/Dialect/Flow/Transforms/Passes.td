@@ -58,7 +58,7 @@ def DeduplicateExecutables :
 }
 
 def FoldUnitExtentDims :
-    InterfacePass<"iree-flow-fold-unit-extent-dims", "mlir::FunctionOpInterface"> {
+    Pass<"iree-flow-fold-unit-extent-dims", "mlir::ModuleOp"> {
   let summary = "Fold unit extent dimension of operations";
   let constructor = "mlir::iree_compiler::IREE::Flow::createFoldUnitExtentDimsPass()";
 }
@@ -168,6 +168,8 @@ def FusionOfTensorOps :
   let options = [
     Option<"fuseMultiUse", "fuse-multi-use", "bool",
            /*default=*/"false", "Fuse ops with multiuse">,
+    Option<"fuseMultiReduction", "fuse-multi-reduction", "bool",
+           /*default=*/"true", "Fuse ops that have multiple reduction iterators">,
     Option<"multiUseFusionIteration", "multi-use-fusion-iteration", "unsigned",
            /*default=*/"2", "Number of iterations to fuse multiuse ops">
   ];

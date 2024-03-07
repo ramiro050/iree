@@ -31,6 +31,7 @@
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/PassManager.h"
@@ -58,19 +59,49 @@ llvm::cl::opt<int64_t> clLLVMGPUSharedMemoryLimit(
 // Bufferization Configuration
 //===----------------------------------------------------------------------===//
 
+static bool hasThreadMapping(scf::ForallOp forall) {
+  if (!forall.getMapping().has_value()) {
+    return false;
+  }
+  return llvm::any_of(forall.getMapping().value(), [](Attribute attr) {
+    return isa<gpu::GPUThreadMappingAttr>(attr);
+  });
+}
+
+// All pipelines that use this allocation function distribute scf.forall ops
+// after bufferizing. This means that to differentiate between an allocation in
+// function memory and workgroup memory, we need to look for a parent
+// scf.forall op with a thread mapping. If not present, we allocate workgroup
+// memory. Pipelines that choose to distribute in a different order will have
+// to use a different allocation function.
 static FailureOr<Value> gpuAllocationFn(OpBuilder &builder, Location loc,
                                         MemRefType memRefType,
                                         ValueRange dynamicSizes,
                                         unsigned alignment) {
-  auto workgroupSpace = gpu::AddressSpaceAttr::get(
-      builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
+  Block *insertionBlock = builder.getInsertionBlock();
+  Operation *parent = insertionBlock->getParentOp();
+  scf::ForallOp enclosingForall = dyn_cast<scf::ForallOp>(parent);
+  if (!enclosingForall) {
+    enclosingForall = parent->getParentOfType<scf::ForallOp>();
+  }
+  gpu::AddressSpaceAttr addressSpace;
+  if (enclosingForall && hasThreadMapping(enclosingForall)) {
+    addressSpace = gpu::AddressSpaceAttr::get(
+        builder.getContext(), gpu::GPUDialect::getPrivateAddressSpace());
+  } else {
+    addressSpace = gpu::AddressSpaceAttr::get(
+        builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
+  }
   MemRefType allocType =
       MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                      AffineMap(), workgroupSpace);
+                      AffineMap(), addressSpace);
   return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
       .getResult();
 }
 
+// Barriers are only needed when copying to/from workgroup memory. The only
+// other kind of memory that can be allocated is function memory, which is local
+// to a thread.
 static LogicalResult gpuCopyFn(OpBuilder &builder, Location loc, Value from,
                                Value to) {
   bool needsBarrier = false;
@@ -496,6 +527,20 @@ void addGPUVectorDistributePassPipeline(OpPassManager &pm) {
   nestedModulePM.addNestedPass<func::FuncOp>(
       createGPUTensorTileToSerialLoops());
 
+  // Generalize all named ops so that we can fold away unit extent dims. By this
+  // point, all tiling is finished so the tiling configurations on those ops can
+  // be safely dropped. This additionally allows vectorization of convolution to
+  // `vector.contract` as filter dimensions are expected to be tiled to 1 by
+  // this point.
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      createLinalgGeneralizeNamedOpsPass());
+  LinalgFoldUnitExtentDimsPassOptions options;
+  options.useRankReducingSlices = true;
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      mlir::createLinalgFoldUnitExtentDimsPass(options));
+  nestedModulePM.addPass(createCanonicalizerPass());
+  nestedModulePM.addPass(createCSEPass());
+
   nestedModulePM.addNestedPass<func::FuncOp>(
       createOptimizeTensorInsertExtractSlicesPass());
 
@@ -640,6 +685,29 @@ void addGPUDefaultPassPipeline(OpPassManager &pm, bool enableMicrokernels) {
   addBufferizePasses(nestedModulePM);
   nestedModulePM.addNestedPass<func::FuncOp>(
       createRemoveSingleIterationLoopPass());
+}
+
+void addGPUBaseLoweringPassPipeline(OpPassManager &pm) {
+  auto &nestedModulePM = pm.nest<ModuleOp>();
+
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      createConvertToDestinationPassingStylePass(
+          /*useWARForCooperativeMatrixCodegen=*/false));
+  nestedModulePM.addPass(createCanonicalizerPass());
+  nestedModulePM.addPass(createCSEPass());
+
+  addBufferizePasses(nestedModulePM);
+  nestedModulePM.addPass(createCanonicalizerPass());
+  nestedModulePM.addPass(createCSEPass());
+
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      IREE::LinalgExt::createLinalgExtToLoopsPass());
+  nestedModulePM.addNestedPass<func::FuncOp>(createMemrefCopyToLinalgPass());
+  nestedModulePM.addNestedPass<func::FuncOp>(createConvertLinalgToLoopsPass());
+  nestedModulePM.addNestedPass<func::FuncOp>(
+      createRemoveSingleIterationLoopPass());
+  nestedModulePM.addPass(createCanonicalizerPass());
+  nestedModulePM.addPass(createCSEPass());
 }
 
 // Add passes to make the address computation more explicit and optimize them.
@@ -876,6 +944,11 @@ void registerCodegenROCDLPasses() {
       [](OpPassManager &passManager) {
         buildROCDLCodegenPassPipeline(passManager);
       });
+
+  static PassPipelineRegistration<> LLVMGPUBufferizePipeline(
+      "iree-codegen-llvmgpu-bufferization-pipeline",
+      "Runs pass pipeline to bufferize for llvmgpu backends",
+      [](OpPassManager &passManager) { addBufferizePasses(passManager); });
 }
 
 } // namespace mlir::iree_compiler

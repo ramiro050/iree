@@ -11,9 +11,6 @@
 #ifdef IREE_HAVE_LLVM_CPU_TARGET
 #include "iree/compiler/Dialect/HAL/Target/LLVMCPU/LLVMCPUTarget.h"
 #endif // IREE_HAVE_LLVM_CPU_TARGET
-#ifdef IREE_HAVE_VULKANSPIRV_TARGET
-#include "iree/compiler/Dialect/HAL/Target/VulkanSPIRV/VulkanSPIRVTarget.h"
-#endif // IREE_HAVE_VULKANSPIRV_TARGET
 
 namespace mlir::iree_compiler {
 
@@ -23,15 +20,10 @@ namespace mlir::iree_compiler {
 // need.
 void registerHALTargetBackends() {
   static bool init_once = []() {
-
 #ifdef IREE_HAVE_LLVM_CPU_TARGET
     IREE::HAL::registerLLVMCPUTargetBackends(
         []() { return IREE::HAL::LLVMTargetOptions::getFromFlags(); });
 #endif // IREE_HAVE_LLVM_CPU_TARGET
-#ifdef IREE_HAVE_VULKANSPIRV_TARGET
-    IREE::HAL::registerVulkanSPIRVTargetBackends(
-        []() { return IREE::HAL::getVulkanSPIRVTargetOptionsFromFlags(); });
-#endif // IREE_HAVE_VULKANSPIRV_TARGET
     return true;
   }();
   (void)init_once;
