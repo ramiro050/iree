@@ -4,12 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "compiler/plugins/input/StableHLO/Conversion/Preprocessing/Passes.h"
 #include "iree/compiler/PluginAPI/Client.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Transforms/Passes.h"
-#include "stablehlo-iree/Conversion/Preprocessing/Passes.h"
 #include "xnnpack/Conversion/Passes.h"
 #include "xnnpack/IR/XnnpackDialect.h"
 #include "xnnpack/Transforms/Passes.h"

@@ -27,7 +27,7 @@ cc_library(
         ":IR",
         ":Transforms",
         ":defs",
-        "//compiler/plugins/input/StableHLO/stablehlo-iree/Conversion/Preprocessing",
+        "//compiler/plugins/input/StableHLO/Conversion/Preprocessing",
         "//compiler/src/iree/compiler/PluginAPI",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
