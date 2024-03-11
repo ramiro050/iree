@@ -38,6 +38,15 @@
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
 
+#ifdef XNNPACK_PLUGIN_LOG
+#define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#define CACHE_DUMP_KEY(KEY) \
+  LOG_DEBUG("cache_key {kernel_id=%zu }", (KEY)->kernel_id)
+#else
+#define LOG_DEBUG(...)
+#define CACHE_DUMP_KEY(...)
+#endif  // XNNPACK_PLUGIN_LOG
+
 struct cache_key {
   size_t kernel_id;
 };
@@ -66,28 +75,18 @@ typedef struct {
   struct cache* cache;
 } system_plugin_t;
 
-inline static void log_debug(const char* format, ...) {
-#ifdef XNNPACK_PLUGIN_LOG
-  va_list args;
-  va_start(args, format);
-  vfprintf(stderr, format, args);
-  fprintf(stderr, "\n");
-  va_end(args);
-#endif
-}
-
 static struct cache* create_cache(size_t max_size) {
   struct cache* m = malloc(sizeof(struct cache));
   m->max_size = max_size;
   m->size = 0;
-  m->keys = malloc(sizeof(struct cache_key) * max_size);
-  m->values = malloc(sizeof(struct cache_value) * max_size);
+  m->keys = calloc(max_size, sizeof(struct cache_key));
+  m->values = calloc(max_size, sizeof(struct cache_value));
   pthread_mutex_init(&m->lock, NULL);
   return m;
 }
 
 static void destroy_cache(struct cache* m) {
-  log_debug("Max cache size used: %zu", m->size);
+  LOG_DEBUG("Max cache size used: %zu", m->size);
   for (size_t i = 0; i < m->size; i++) {
     xnn_delete_operator(m->values[i].op);
     free(m->values[i].kernel_scale);
@@ -98,19 +97,17 @@ static void destroy_cache(struct cache* m) {
   free(m);
 }
 
-inline static void cache_dump_key(const struct cache_key* key) {
-  log_debug("cache_key { kernel_id=%zu }", key->kernel_id);
-}
-
 static bool cache_insert(struct cache* m, struct cache_key key,
                          struct cache_value value) {
   if (m->size >= m->max_size) {
-    log_debug("unimplemented: variable size cache");
+    // TODO: add variable size cache. This can be done using the "double the
+    // storage every time it runs out" approach.
+    LOG_DEBUG("unimplemented: variable size cache");
     return false;
   }
 
-  log_debug("inserting entry with key:");
-  cache_dump_key(&key);
+  LOG_DEBUG("inserting entry with key:");
+  CACHE_DUMP_KEY(&key);
   m->keys[m->size] = key;
   m->values[m->size] = value;
   m->size++;
@@ -129,13 +126,13 @@ static bool cache_lookup(const struct cache* m, const struct cache_key* key,
   for (size_t i = 0; i < m->size; i++) {
     if (cache_keys_match(&m->keys[i], key)) {
       *value = &m->values[i];
-      log_debug("found entry with key:");
-      cache_dump_key(key);
+      LOG_DEBUG("found entry with key:");
+      CACHE_DUMP_KEY(key);
       return true;
     }
   }
-  log_debug("did not find entry with key:");
-  cache_dump_key(key);
+  LOG_DEBUG("did not find entry with key:");
+  CACHE_DUMP_KEY(key);
   return false;
 }
 
@@ -180,8 +177,8 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   size_t input_strides[2] = {params->input_stride0, params->input_stride1};
   size_t input_shape[2] = {params->input_size0, params->input_size1};
   if (!is_default_stride(input_strides, input_shape, /*rank=*/2)) {
-    log_debug("unimplemented: input without default stride");
-    log_debug("stride=[%zu, %zu], size=[%zu, %zu]", input_strides[0],
+    LOG_DEBUG("unimplemented: input without default stride");
+    LOG_DEBUG("stride=[%zu, %zu], size=[%zu, %zu]", input_strides[0],
               input_strides[1], input_shape[0], input_shape[1]);
     return 1;
   }
@@ -189,8 +186,8 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   size_t kernel_strides[2] = {params->kernel_stride0, params->kernel_stride1};
   size_t kernel_shape[2] = {params->kernel_size0, params->kernel_size1};
   if (!is_default_stride(kernel_strides, kernel_shape, /*rank=*/2)) {
-    log_debug("unimplemented: kernel without default stride");
-    log_debug("stride=[%zu, %zu], size=[%zu, %zu]", kernel_strides[0],
+    LOG_DEBUG("unimplemented: kernel without default stride");
+    LOG_DEBUG("stride=[%zu, %zu], size=[%zu, %zu]", kernel_strides[0],
               kernel_strides[1], kernel_shape[0], kernel_shape[1]);
     return 1;
   }
@@ -198,8 +195,8 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   size_t output_strides[2] = {params->output_stride0, params->output_stride1};
   size_t output_shape[2] = {params->output_size0, params->output_size1};
   if (!is_default_stride(output_strides, output_shape, /*rank=*/2)) {
-    log_debug("unimplemented: output without default stride");
-    log_debug("stride=[%zu, %zu], size=[%zu, %zu]", output_strides[0],
+    LOG_DEBUG("unimplemented: output without default stride");
+    LOG_DEBUG("stride=[%zu, %zu], size=[%zu, %zu]", output_strides[0],
               output_strides[1], output_shape[0], output_shape[1]);
     return 1;
   }
@@ -209,7 +206,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   size_t kernel_reduction_dim_size =
       params->transpose_rhs ? kernel_shape[0] : kernel_shape[1];
   if (input_reduction_dim_size != kernel_reduction_dim_size) {
-    log_debug("reduction dimensions are not the same size");
+    LOG_DEBUG("reduction dimensions are not the same size");
     return 1;
   }
 
@@ -218,7 +215,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   const size_t output_channels =
       params->transpose_rhs ? kernel_shape[1] : kernel_shape[0];
   if ((input_channels & 1) != 0) {
-    log_debug("`input_channels` must be even");
+    LOG_DEBUG("`input_channels` must be even");
     return 1;
   }
 
@@ -232,7 +229,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   // This padding should happen on the IREE side.
   const int8_t* input = &(params->input[params->input_offset]);
   if ((params->kernel_offset & 1) != 0) {
-    log_debug("`kernel_offset` must be even");
+    LOG_DEBUG("`kernel_offset` must be even");
     return 1;
   }
   const void* kernel = &(params->kernel[params->kernel_offset / 2]);
@@ -263,7 +260,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
         kernel, /*bias=*/NULL, output_min, output_max, flags,
         /*code_cache=*/NULL, /*weights_cache=*/NULL, &fc_op);
     if (status != xnn_status_success) {
-      log_debug("unable to create fully connected op");
+      LOG_DEBUG("unable to create fully connected op");
       return 1;
     }
 
@@ -271,7 +268,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     cache_value.op = fc_op;
     cache_value.kernel_scale = kernel_scale;
     if (!cache_insert(plugin->cache, cache_key, cache_value)) {
-      log_debug("unable to cache fully connected op");
+      LOG_DEBUG("unable to cache fully connected op");
       return 1;
     }
   }
@@ -280,7 +277,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
       fc_op, batch_size,
       /*threadpool=*/plugin->threadpool);
   if (status != xnn_status_success) {
-    log_debug("unable to reshape fully connected op");
+    LOG_DEBUG("unable to reshape fully connected op");
     return 1;
   }
 
@@ -297,7 +294,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
       fc_op, input, output,
       /*quantization_params=*/quantization_params);
   if (status != xnn_status_success) {
-    log_debug("unable to setup fully connected op");
+    LOG_DEBUG("unable to setup fully connected op");
     return 1;
   }
 
@@ -305,7 +302,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   pthread_mutex_unlock(&plugin->cache->lock);
 
   if (status != xnn_status_success) {
-    log_debug("unable to run fully connected op");
+    LOG_DEBUG("unable to run fully connected op");
     return 1;
   }
 
