@@ -38,19 +38,18 @@ class SetIdAttributesPass
   void runOnOperation() override {
     auto m = getOperation();
     DenseMap<Value, int64_t> kernelIds;
-    auto result =
-        m.walk([&](FullyConnectedNcQd8F32Qc4wOp fc) -> WalkResult {
-          if (!kernelIsConstant(fc))
-            return fc.emitError(
-                "unimplemented: found kernel that is not guaranteed to be "
-                "constant");
-          Value kernel = fc.getKernel();
-          if (!kernelIds.contains(kernel)) kernelIds[kernel] = kernelIds.size();
-          auto kernelIdAttr = IntegerAttr::get(IndexType::get(m.getContext()),
-                                               kernelIds[kernel]);
-          fc.setKernelIdAttr(kernelIdAttr);
-          return WalkResult::advance();
-        });
+    auto result = m.walk([&](FullyConnectedNcQd8F32Qc4wOp fc) -> WalkResult {
+      if (!kernelIsConstant(fc))
+        return fc.emitError(
+            "unimplemented: found kernel that is not guaranteed to be "
+            "constant");
+      Value kernel = fc.getKernel();
+      if (!kernelIds.contains(kernel)) kernelIds[kernel] = kernelIds.size();
+      auto kernelIdAttr =
+          IntegerAttr::get(IndexType::get(m.getContext()), kernelIds[kernel]);
+      fc.setKernelIdAttr(kernelIdAttr);
+      return WalkResult::advance();
+    });
 
     if (result.wasInterrupted()) return signalPassFailure();
   }
