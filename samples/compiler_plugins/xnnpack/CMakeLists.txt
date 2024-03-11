@@ -29,8 +29,11 @@ iree_cc_library(
     ::IR
     ::Transforms
     ::defs
+    MLIRDialect
     MLIRIR
+    MLIRTransforms
     iree::compiler::PluginAPI
+    iree::compiler::plugins::input::StableHLO::Conversion::Preprocessing
   PUBLIC
 )
 
@@ -81,12 +84,14 @@ iree_cc_library(
   SRCS
     "src/xnnpack/Transforms/LegalizeXnnpack.cpp"
     "src/xnnpack/Transforms/Passes.cpp"
+    "src/xnnpack/Transforms/SetIdAttributes.cpp"
   DEPS
     ::IR
     ::TransformsPassesIncGen
     ::defs
     MLIRDialect
     MLIRIR
+    StablehloOps
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::Flow::IR
   PUBLIC

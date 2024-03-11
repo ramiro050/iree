@@ -48,7 +48,7 @@ func.func @batch_matrix_multiply(%a : tensor<?x?x?xf32>, %b : tensor<?x?x?xf32>)
 // CHECK-SAME:                                                               %[[B:.*]]: tensor<?x?xi4>) -> tensor<?x?xf32> {
 // CHECK:           %[[OUT:.*]] = tensor.empty(%[[A_DIM_0:.*]], %[[B_DIM_0:.*]]) : tensor<?x?xf32>
 // CHECK:           %[[RESULT:.*]] = flow.dispatch.region -> (tensor<?x?xf32>{%[[A_DIM_0]], %[[B_DIM_0]]}) {
-// CHECK:             %[[UKERNEL:.*]] = iree_codegen.ukernel.generic "xnnpack.fully_connected_nc_qd8_f32_qc4w_workgroup" ins(%[[A]], %[[B]] : tensor<?x?xi8>, tensor<?x?xi4>) outs(%[[OUT]] : tensor<?x?xf32>) (%[[A_DIM_0]], %[[A_DIM_1:.*]], %[[B_DIM_0]], %[[B_DIM_1:.*]], %[[A_DIM_0]], %[[B_DIM_0]], %[[TRANSPOSE_RHS:.*]] : index, index, index, index, index, index, i8) -> tensor<?x?xf32>
+// CHECK:             %[[UKERNEL:.*]] = iree_codegen.ukernel.generic "xnnpack.fully_connected_nc_qd8_f32_qc4w_workgroup" ins(%[[A]], %[[B]] : tensor<?x?xi8>, tensor<?x?xi4>) outs(%[[OUT]] : tensor<?x?xf32>) (%[[A_DIM_0]], %[[A_DIM_1:.*]], %[[B_DIM_0]], %[[B_DIM_1:.*]], %[[A_DIM_0]], %[[B_DIM_0]], %[[TRANSPOSE_RHS:.*]], %[[KERNEL_ID:.*]] : index, index, index, index, index, index, i8, index) -> tensor<?x?xf32>
 // CHECK:             flow.return %[[UKERNEL]] : tensor<?x?xf32>
 // CHECK:           } count() -> (index, index, index) {
 // CHECK:             %[[ONE:.*]] = arith.constant 1 : index
@@ -59,7 +59,7 @@ func.func @batch_matrix_multiply(%a : tensor<?x?x?xf32>, %b : tensor<?x?x?xf32>)
 // CHECK-LABEL:   func.func @fully_connected(
 // CHECK:           %{{.*}} = call @xnnpack.fully_connected_nc_qd8_f32_qc4w_0
 func.func @fully_connected(%a : tensor<?x?xi8>, %b : tensor<?x?xi4>) -> tensor<?x?xf32> {
-  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %a, %b transpose_rhs = false : (tensor<?x?xi8>, tensor<?x?xi4>) -> tensor<?x?xf32>
+  %c = xnnpack.fully_connected_nc_qd8_f32_qc4w %a, %b, transpose_rhs = false, kernel_id = -1 : (tensor<?x?xi8>, tensor<?x?xi4>) -> tensor<?x?xf32>
   func.return %c : tensor<?x?xf32>
 }
 
@@ -74,7 +74,7 @@ func.func @fully_connected(%a : tensor<?x?xi8>, %b : tensor<?x?xi4>) -> tensor<?
 func.func @fully_connected$multiple_static(%input_0 : tensor<2x8xi8>, %kernel_0 : tensor<4x8xi4>,
                                            %input_1 : tensor<2x16xi8>, %kernel_1 : tensor<4x16xi4>)
                                            -> (tensor<2x4xf32>, tensor<2x4xf32>) {
-  %output_0 = xnnpack.fully_connected_nc_qd8_f32_qc4w %input_0, %kernel_0 transpose_rhs = false : (tensor<2x8xi8>, tensor<4x8xi4>) -> tensor<2x4xf32>
-  %output_1 = xnnpack.fully_connected_nc_qd8_f32_qc4w %input_1, %kernel_1 transpose_rhs = false : (tensor<2x16xi8>, tensor<4x16xi4>) -> tensor<2x4xf32>
+  %output_0 = xnnpack.fully_connected_nc_qd8_f32_qc4w %input_0, %kernel_0, transpose_rhs = false, kernel_id = -1 : (tensor<2x8xi8>, tensor<4x8xi4>) -> tensor<2x4xf32>
+  %output_1 = xnnpack.fully_connected_nc_qd8_f32_qc4w %input_1, %kernel_1, transpose_rhs = false, kernel_id = -1 : (tensor<2x16xi8>, tensor<4x16xi4>) -> tensor<2x4xf32>
   func.return %output_0, %output_1 : tensor<2x4xf32>, tensor<2x4xf32>
 }

@@ -45,11 +45,18 @@ def Xnnpack_FullyConnectedNcQd8F32Qc4wOp : Xnnpack_Op<"fully_connected_nc_qd8_f3
   let summary = "Fully connected layer with int8 input, int4 kernel, and f32 output";
   let arguments = (ins AnyRankedTensor:$input,
                        AnyRankedTensor:$kernel,
-                       BoolAttr:$transpose_rhs);
+                       BoolAttr:$transpose_rhs,
+                       // IREE's executable plugin interface makes no guarantees that the pointers
+                       // to constants will themselves be constant. This means that in order to
+                       // cache the XNNPACK ops, the information of which constant in the IR is
+                       // being passed as a kernel argument must be propagated at compile-time. The
+                       // `kernel_id` represents this information. Two ops with the same `kernel_id`
+                       // will take in the exact same kernel as argument.
+                       IndexAttr:$kernel_id);
   let results = (outs AnyRankedTensor:$result);
 
   let assemblyFormat = [{
-    $input `,` $kernel `transpose_rhs` `=` $transpose_rhs attr-dict `:` functional-type(operands, results)
+    $input `,` $kernel `,` `transpose_rhs` `=` $transpose_rhs `,` `kernel_id` `=` $kernel_id attr-dict `:` functional-type(operands, results)
   }];
 }
 

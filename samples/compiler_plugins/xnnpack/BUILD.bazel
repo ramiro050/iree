@@ -27,8 +27,11 @@ cc_library(
         ":IR",
         ":Transforms",
         ":defs",
+        "//compiler/plugins/input/StableHLO/Conversion/Preprocessing",
         "//compiler/src/iree/compiler/PluginAPI",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -104,6 +107,7 @@ cc_library(
     srcs = [
         "src/xnnpack/Transforms/LegalizeXnnpack.cpp",
         "src/xnnpack/Transforms/Passes.cpp",
+        "src/xnnpack/Transforms/SetIdAttributes.cpp",
     ],
     hdrs = [
         "src/xnnpack/Transforms/Passes.h",
@@ -117,6 +121,7 @@ cc_library(
         "//compiler/src/iree/compiler/Dialect/Flow/IR",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

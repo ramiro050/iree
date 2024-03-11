@@ -28,6 +28,8 @@
 #include <float.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <pthreadpool.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +37,32 @@
 
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
+
+#ifdef XNNPACK_PLUGIN_LOG
+#define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#define CACHE_DUMP_KEY(KEY) \
+  LOG_DEBUG("cache_key {kernel_id=%zu }", (KEY)->kernel_id)
+#else
+#define LOG_DEBUG(...)
+#define CACHE_DUMP_KEY(...)
+#endif  // XNNPACK_PLUGIN_LOG
+
+struct cache_key {
+  size_t kernel_id;
+};
+
+struct cache_value {
+  xnn_operator_t op;   // Owned by cache
+  void* kernel_scale;  // Owned by cache
+};
+
+struct cache {
+  size_t size;
+  size_t max_size;
+  struct cache_key* keys;
+  struct cache_value* values;
+  pthread_mutex_t lock;
+};
 
 // Stateful plugin instance.
 // There may be multiple of these in a process at a time, each with its own
@@ -44,7 +72,69 @@ typedef struct {
   iree_hal_executable_plugin_allocator_t host_allocator;
   FILE* file;
   pthreadpool_t threadpool;
+  struct cache* cache;
 } system_plugin_t;
+
+static struct cache* create_cache(size_t max_size) {
+  struct cache* m = malloc(sizeof(struct cache));
+  m->max_size = max_size;
+  m->size = 0;
+  m->keys = calloc(max_size, sizeof(struct cache_key));
+  m->values = calloc(max_size, sizeof(struct cache_value));
+  pthread_mutex_init(&m->lock, NULL);
+  return m;
+}
+
+static void destroy_cache(struct cache* m) {
+  LOG_DEBUG("Max cache size used: %zu", m->size);
+  for (size_t i = 0; i < m->size; i++) {
+    xnn_delete_operator(m->values[i].op);
+    free(m->values[i].kernel_scale);
+  }
+  pthread_mutex_destroy(&m->lock);
+  free(m->keys);
+  free(m->values);
+  free(m);
+}
+
+static bool cache_insert(struct cache* m, struct cache_key key,
+                         struct cache_value value) {
+  if (m->size >= m->max_size) {
+    // TODO: add variable size cache. This can be done using the "double the
+    // storage every time it runs out" approach.
+    LOG_DEBUG("unimplemented: variable size cache");
+    return false;
+  }
+
+  LOG_DEBUG("inserting entry with key:");
+  CACHE_DUMP_KEY(&key);
+  m->keys[m->size] = key;
+  m->values[m->size] = value;
+  m->size++;
+  return true;
+}
+
+static bool cache_keys_match(const struct cache_key* key1,
+                             const struct cache_key* key2) {
+  return key1->kernel_id == key2->kernel_id;
+}
+
+static bool cache_lookup(const struct cache* m, const struct cache_key* key,
+                         struct cache_value** value) {
+  // A linear search is pretty inefficient.
+  // TODO: Use more efficient search if overhead becomes large
+  for (size_t i = 0; i < m->size; i++) {
+    if (cache_keys_match(&m->keys[i], key)) {
+      *value = &m->values[i];
+      LOG_DEBUG("found entry with key:");
+      CACHE_DUMP_KEY(key);
+      return true;
+    }
+  }
+  LOG_DEBUG("did not find entry with key:");
+  CACHE_DUMP_KEY(key);
+  return false;
+}
 
 static bool is_default_stride(size_t* strides, size_t* dim_sizes, size_t rank) {
   size_t acc = 1;
@@ -80,33 +170,34 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     size_t output_size0;
     size_t output_size1;
     int8_t transpose_rhs;
+    size_t kernel_id;
   } params_t;
   const params_t* params = (const params_t*)params_ptr;
 
   size_t input_strides[2] = {params->input_stride0, params->input_stride1};
   size_t input_shape[2] = {params->input_size0, params->input_size1};
   if (!is_default_stride(input_strides, input_shape, /*rank=*/2)) {
-    fprintf(stderr, "unimplemented: input without default stride\n");
-    fprintf(stderr, "stride=[%zu, %zu], size=[%zu, %zu]\n", input_strides[0],
-            input_strides[1], input_shape[0], input_shape[1]);
+    LOG_DEBUG("unimplemented: input without default stride");
+    LOG_DEBUG("stride=[%zu, %zu], size=[%zu, %zu]", input_strides[0],
+              input_strides[1], input_shape[0], input_shape[1]);
     return 1;
   }
 
   size_t kernel_strides[2] = {params->kernel_stride0, params->kernel_stride1};
   size_t kernel_shape[2] = {params->kernel_size0, params->kernel_size1};
   if (!is_default_stride(kernel_strides, kernel_shape, /*rank=*/2)) {
-    fprintf(stderr, "unimplemented: kernel without default stride\n");
-    fprintf(stderr, "stride=[%zu, %zu], size=[%zu, %zu]\n", kernel_strides[0],
-            kernel_strides[1], kernel_shape[0], kernel_shape[1]);
+    LOG_DEBUG("unimplemented: kernel without default stride");
+    LOG_DEBUG("stride=[%zu, %zu], size=[%zu, %zu]", kernel_strides[0],
+              kernel_strides[1], kernel_shape[0], kernel_shape[1]);
     return 1;
   }
 
   size_t output_strides[2] = {params->output_stride0, params->output_stride1};
   size_t output_shape[2] = {params->output_size0, params->output_size1};
   if (!is_default_stride(output_strides, output_shape, /*rank=*/2)) {
-    fprintf(stderr, "unimplemented: output without default stride\n");
-    fprintf(stderr, "stride=[%zu, %zu], size=[%zu, %zu]\n", output_strides[0],
-            output_strides[1], output_shape[0], output_shape[1]);
+    LOG_DEBUG("unimplemented: output without default stride");
+    LOG_DEBUG("stride=[%zu, %zu], size=[%zu, %zu]", output_strides[0],
+              output_strides[1], output_shape[0], output_shape[1]);
     return 1;
   }
 
@@ -115,7 +206,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   size_t kernel_reduction_dim_size =
       params->transpose_rhs ? kernel_shape[0] : kernel_shape[1];
   if (input_reduction_dim_size != kernel_reduction_dim_size) {
-    fprintf(stderr, "reduction dimensions are not the same size\n");
+    LOG_DEBUG("reduction dimensions are not the same size");
     return 1;
   }
 
@@ -124,7 +215,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   const size_t output_channels =
       params->transpose_rhs ? kernel_shape[1] : kernel_shape[0];
   if ((input_channels & 1) != 0) {
-    fprintf(stderr, "`input_channels` must be even\n");
+    LOG_DEBUG("`input_channels` must be even");
     return 1;
   }
 
@@ -138,35 +229,55 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   // This padding should happen on the IREE side.
   const int8_t* input = &(params->input[params->input_offset]);
   if ((params->kernel_offset & 1) != 0) {
-    fprintf(stderr, "`kernel_offset` must be even\n");
+    LOG_DEBUG("`kernel_offset` must be even");
     return 1;
   }
   const void* kernel = &(params->kernel[params->kernel_offset / 2]);
   float* output = &(params->output[params->output_offset]);
 
-  // TODO: figure out a way to avoid this allocation. From testing, passing NULL
-  // seems to make the scale default to 0, which is not what we want.
-  float* kernel_scale = malloc(output_channels * sizeof(float));
-  for (size_t i = 0; i < output_channels; i++) kernel_scale[i] = 1;
-
   xnn_operator_t fc_op = NULL;
-  uint32_t flags = params->transpose_rhs ? XNN_FLAG_TRANSPOSE_WEIGHTS : 0;
-  status = xnn_create_fully_connected_nc_qd8_f32_qc4w(
-      input_channels, output_channels, /*input_stride=*/input_channels,
-      /*output_stride=*/output_channels, kernel_zero_point, kernel_scale,
-      kernel, /*bias=*/NULL, output_min, output_max, flags,
-      /*code_cache=*/NULL,
-      /*weights_cache=*/NULL, &fc_op);
-  if (status != xnn_status_success) {
-    fprintf(stderr, "unable to create fully connected op\n");
-    return 1;
+  struct cache_value* cache_value_found = NULL;
+  struct cache_key cache_key;
+  cache_key.kernel_id = params->kernel_id;
+
+  // The `xnn_reshape` and `xn_setup` functions modify the contents of the
+  // `xnn_operator_t` passed. Therefore, when using an op from the cache the
+  // cache lock must be held throughtout the entire setup, reshape, and run
+  // process.
+  pthread_mutex_lock(&plugin->cache->lock);
+  if (cache_lookup(plugin->cache, &cache_key, &cache_value_found)) {
+    fc_op = cache_value_found->op;
+  } else {
+    // TODO: figure out a way to avoid this allocation. From testing, passing
+    // NULL seems to make the scale default to 0, which is not what we want.
+    float* kernel_scale = malloc(output_channels * sizeof(float));
+    for (size_t i = 0; i < output_channels; i++) kernel_scale[i] = 1;
+
+    uint32_t flags = params->transpose_rhs ? XNN_FLAG_TRANSPOSE_WEIGHTS : 0;
+    status = xnn_create_fully_connected_nc_qd8_f32_qc4w(
+        input_channels, output_channels, /*input_stride=*/input_channels,
+        /*output_stride=*/output_channels, kernel_zero_point, kernel_scale,
+        kernel, /*bias=*/NULL, output_min, output_max, flags,
+        /*code_cache=*/NULL, /*weights_cache=*/NULL, &fc_op);
+    if (status != xnn_status_success) {
+      LOG_DEBUG("unable to create fully connected op");
+      return 1;
+    }
+
+    struct cache_value cache_value;
+    cache_value.op = fc_op;
+    cache_value.kernel_scale = kernel_scale;
+    if (!cache_insert(plugin->cache, cache_key, cache_value)) {
+      LOG_DEBUG("unable to cache fully connected op");
+      return 1;
+    }
   }
 
   status = xnn_reshape_fully_connected_nc_qd8_f32_qc4w(
       fc_op, batch_size,
       /*threadpool=*/plugin->threadpool);
   if (status != xnn_status_success) {
-    fprintf(stderr, "unable to reshape fully connected op\n");
+    LOG_DEBUG("unable to reshape fully connected op");
     return 1;
   }
 
@@ -183,24 +294,19 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
       fc_op, input, output,
       /*quantization_params=*/quantization_params);
   if (status != xnn_status_success) {
-    fprintf(stderr, "unable to setup fully connected op\n");
+    LOG_DEBUG("unable to setup fully connected op");
     return 1;
   }
 
   status = xnn_run_operator(fc_op, /*threadpool=*/plugin->threadpool);
-  if (status != xnn_status_success) {
-    fprintf(stderr, "unable to run fully connected op\n");
-    return 1;
-  }
+  pthread_mutex_unlock(&plugin->cache->lock);
 
-  status = xnn_delete_operator(fc_op);
   if (status != xnn_status_success) {
-    fprintf(stderr, "unable to delete fully connected op\n");
+    LOG_DEBUG("unable to run fully connected op");
     return 1;
   }
 
   free(quantization_params);
-  free(kernel_scale);
   return 0;
 }
 
@@ -442,12 +548,13 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
       thread_count = strtol(flag_val, NULL, 10);
     }
   }
-  const pthreadpool_t threadpool = pthreadpool_create(thread_count);
-  if (!threadpool) {
+  plugin->threadpool = pthreadpool_create(thread_count);
+  if (!plugin->threadpool) {
     return iree_hal_executable_plugin_status_from_code(
         IREE_HAL_EXECUTABLE_PLUGIN_STATUS_ABORTED);
   }
-  plugin->threadpool = threadpool;
+  // TODO: add variable size support to cache
+  plugin->cache = create_cache(/*max_size=*/80);
 
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
@@ -457,7 +564,7 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
 // Called to free any plugin state allocated in load.
 static void system_plugin_unload(void* self) {
   system_plugin_t* plugin = (system_plugin_t*)self;
-
+  destroy_cache(plugin->cache);
   xnn_deinitialize();
   pthreadpool_destroy(plugin->threadpool);
 

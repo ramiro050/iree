@@ -13,4 +13,8 @@ def LegalizeXnnpack : Pass<"iree-xnnpack-legalize", "mlir::ModuleOp"> {
   let summary = "Legalizes the xnnpack ops";
 }
 
+def SetIdAttributes : Pass<"iree-xnnpack-set-id-attributes", "mlir::ModuleOp"> {
+  let summary = "Set ID attributes in xnnpack ops";
+}
+
 #endif // IREE_XNNPACK_TRANSFORMS_PASSES
