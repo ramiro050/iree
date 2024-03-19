@@ -277,6 +277,14 @@ void buildFlowTransformPassPipeline(OpPassManager &passManager,
 
   passManager.addNestedPass<IREE::Flow::ExecutableOp>(
       mlir::createCanonicalizerPass());
+  // IREE currently has poor handling of function calls in the IR, resulting in
+  // compilation errors when the XNNPACK compiler plugin is used with some
+  // models. Since compiler plugins can only modify the preprocessing
+  // pipeline, it is not possible to perform the inline pass at the right moment
+  // from the compiler plugin side.
+  // TODO: Add support for modifying all pipelines from the compiler plugin
+  // registration code.
+  passManager.addPass(mlir::createInlinerPass());
   passManager.addNestedPass<IREE::Flow::ExecutableOp>(mlir::createCSEPass());
 
   // Symbol DCE any remaining variables/functions that are now no longer
