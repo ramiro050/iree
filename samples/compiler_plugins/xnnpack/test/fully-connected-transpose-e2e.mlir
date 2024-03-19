@@ -1,6 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack --compile-to=flow %s | \
-// RUN: iree-opt --inline | \
-// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --compile-from=flow - | \
+// RUN: iree-compile --iree-hal-target-backends=llvm-cpu --iree-plugin=xnnpack %s | \
 // RUN: iree-run-module \
 // RUN:     --device=local-sync \
 // RUN:     --executable_plugin=$IREE_BINARY_DIR/samples/custom_dispatch/xnnpack/plugin/system_plugin$IREE_DYLIB_EXT \
