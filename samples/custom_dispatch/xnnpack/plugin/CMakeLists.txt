@@ -4,21 +4,16 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-if(NOT IREE_TARGET_BACKEND_LLVM_CPU OR
-   NOT IREE_HAL_DRIVER_LOCAL_SYNC OR
-   NOT IREE_HAL_EXECUTABLE_LOADER_EMBEDDED_ELF)
-  return()
-endif()
-
 set(XNNPACK_DIR "" CACHE STRING "XNNPACK directory")
+set(XNNPACK_BUILD_DIR "" CACHE STRING "XNNPACK build directory")
 
 add_library(xnnpack STATIC IMPORTED)
-set_target_properties(xnnpack PROPERTIES IMPORTED_LOCATION ${XNNPACK_DIR}/build/local/libXNNPACK.a)
+set_target_properties(xnnpack PROPERTIES IMPORTED_LOCATION ${XNNPACK_BUILD_DIR}/libXNNPACK.a)
 set_target_properties(xnnpack PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${XNNPACK_DIR}/include)
 
 add_library(pthreadpool STATIC IMPORTED)
-set_target_properties(pthreadpool PROPERTIES IMPORTED_LOCATION ${XNNPACK_DIR}/build/local/pthreadpool/libpthreadpool.a)
-set_target_properties(pthreadpool PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${XNNPACK_DIR}/build/local/pthreadpool-source/include)
+set_target_properties(pthreadpool PROPERTIES IMPORTED_LOCATION ${XNNPACK_BUILD_DIR}/pthreadpool/libpthreadpool.a)
+set_target_properties(pthreadpool PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${XNNPACK_BUILD_DIR}/pthreadpool-source/include)
 
 # system-library plugin mechanism using the system dynamic library loader.
 if(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
