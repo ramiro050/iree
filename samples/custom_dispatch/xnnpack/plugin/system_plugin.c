@@ -41,11 +41,40 @@
 #ifdef XNNPACK_PLUGIN_LOG
 #define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
 #define CACHE_DUMP_KEY(KEY) \
-  LOG_DEBUG("cache_key {kernel_id=%zu }", (KEY)->kernel_id)
+  LOG_DEBUG("cache_key { kernel_id=%zu }\n", (KEY)->kernel_id)
 #else
 #define LOG_DEBUG(...)
 #define CACHE_DUMP_KEY(...)
 #endif  // XNNPACK_PLUGIN_LOG
+
+#define XNNPACK_PLUGIN_LOG_TIMER
+#ifdef XNNPACK_PLUGIN_LOG_TIMER
+#define START_TIMER(TIMER) clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &TIMER)
+#define STOP_TIMER(TIMER)                                 \
+  {                                                       \
+    struct timespec __end_time;                           \
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &__end_time); \
+    TIMER = diff(TIMER, __end_time);                      \
+  }
+#define LOG_TIMER(TIMER) \
+  fprintf(stderr, "%ld:%ld,", TIMER.tv_sec, TIMER.tv_nsec)
+#else
+#define START_TIMER(TIMER)
+#define STOP_TIMER(TIMER)
+#define LOG_TIMER(TIMER)
+#endif  // XNNPACK_PLUGIN_LOG_TIMER
+
+static struct timespec diff(struct timespec start, struct timespec end) {
+  struct timespec temp;
+  if ((end.tv_nsec - start.tv_nsec) < 0) {
+    temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+    temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+  } else {
+    temp.tv_sec = end.tv_sec - start.tv_sec;
+    temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+  }
+  return temp;
+}
 
 struct cache_key {
   size_t kernel_id;
@@ -239,6 +268,7 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   struct cache_value* cache_value_found = NULL;
   struct cache_key cache_key;
   cache_key.kernel_id = params->kernel_id;
+  struct timespec create_time, reshape_time, setup_time, run_time;
 
   // The `xnn_reshape` and `xn_setup` functions modify the contents of the
   // `xnn_operator_t` passed. Therefore, when using an op from the cache the
@@ -246,7 +276,9 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
   // process.
   pthread_mutex_lock(&plugin->cache->lock);
   if (cache_lookup(plugin->cache, &cache_key, &cache_value_found)) {
+    START_TIMER(create_time);
     fc_op = cache_value_found->op;
+    STOP_TIMER(create_time);
   } else {
     // TODO: figure out a way to avoid this allocation. From testing, passing
     // NULL seems to make the scale default to 0, which is not what we want.
@@ -254,11 +286,14 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     for (size_t i = 0; i < output_channels; i++) kernel_scale[i] = 1;
 
     uint32_t flags = params->transpose_rhs ? XNN_FLAG_TRANSPOSE_WEIGHTS : 0;
+    flags |= XNN_FLAG_YIELD_WORKERS;
+    START_TIMER(create_time);
     status = xnn_create_fully_connected_nc_qd8_f32_qc4w(
         input_channels, output_channels, /*input_stride=*/input_channels,
         /*output_stride=*/output_channels, kernel_zero_point, kernel_scale,
         kernel, /*bias=*/NULL, output_min, output_max, flags,
         /*code_cache=*/NULL, /*weights_cache=*/NULL, &fc_op);
+    STOP_TIMER(create_time);
     if (status != xnn_status_success) {
       LOG_DEBUG("unable to create fully connected op");
       return 1;
@@ -273,9 +308,11 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     }
   }
 
+  START_TIMER(reshape_time);
   status = xnn_reshape_fully_connected_nc_qd8_f32_qc4w(
       fc_op, batch_size,
       /*threadpool=*/plugin->threadpool);
+  STOP_TIMER(reshape_time);
   if (status != xnn_status_success) {
     LOG_DEBUG("unable to reshape fully connected op");
     return 1;
@@ -290,15 +327,28 @@ static int fully_connected_nc_qd8_f32_qc4w_workgroup(void* params_ptr,
     quantization_params[i].scale = 1;
   }
 
+  START_TIMER(setup_time);
   status = xnn_setup_fully_connected_nc_qd8_f32_qc4w(
       fc_op, input, output,
       /*quantization_params=*/quantization_params);
+  STOP_TIMER(setup_time);
   if (status != xnn_status_success) {
     LOG_DEBUG("unable to setup fully connected op");
     return 1;
   }
 
+  START_TIMER(run_time);
   status = xnn_run_operator(fc_op, /*threadpool=*/plugin->threadpool);
+  STOP_TIMER(run_time);
+
+  LOG_TIMER(create_time);
+  LOG_TIMER(reshape_time);
+  LOG_TIMER(setup_time);
+  LOG_TIMER(run_time);
+#ifdef XNNPACK_PLUGIN_LOG_TIMER
+  fprintf(stderr, "\n");
+#endif
+
   pthread_mutex_unlock(&plugin->cache->lock);
 
   if (status != xnn_status_success) {
@@ -553,6 +603,9 @@ static iree_hal_executable_plugin_status_t system_plugin_load(
     return iree_hal_executable_plugin_status_from_code(
         IREE_HAL_EXECUTABLE_PLUGIN_STATUS_ABORTED);
   }
+  size_t thread_count_verification =
+      pthreadpool_get_threads_count(plugin->threadpool);
+  fprintf(stderr, "thread_count = %zu\n", thread_count_verification);
   // TODO: add variable size support to cache
   plugin->cache = create_cache(/*max_size=*/80);
 
