@@ -175,7 +175,6 @@ class ConvertFullyConnectedLayer
     auto info = *maybeInfo;
 
     auto inputType = info.input.getType().cast<RankedTensorType>();
-    auto kernelType = info.kernel.getType().cast<RankedTensorType>();
     auto outputType = info.output.getType().cast<RankedTensorType>();
 
     size_t inputRank = inputType.getRank();
@@ -197,16 +196,6 @@ class ConvertFullyConnectedLayer
       info.input = rewriter.create<stablehlo::ReshapeOp>(
           op.getLoc(), rank2InputType, info.input);
     }
-
-    auto offsetType = RankedTensorType::get(kernelType.getShape(),
-                                            rewriter.getIntegerType(8));
-    int8_t offsetInt = 8;
-    Value offset = rewriter.create<stablehlo::ConstantOp>(
-        op.getLoc(), DenseIntElementsAttr::get(offsetType, offsetInt));
-    offset =
-        rewriter.create<stablehlo::ConvertOp>(op.getLoc(), kernelType, offset);
-    info.kernel =
-        rewriter.create<stablehlo::XorOp>(op.getLoc(), info.kernel, offset);
 
     auto transposeRhs = rewriter.getBoolAttr(info.transposeRhs);
     auto kernelIdAttr = rewriter.getIndexAttr(-1);
